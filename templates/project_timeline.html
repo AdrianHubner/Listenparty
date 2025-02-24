@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Projekt-Zeitstrahl</title>
+  <link rel="stylesheet" href="/static/timeline.css">
+</head>
+<body>
+  <a href="/" class="back-button">⬅ Zurück zum Hauptmenü</a>
+  <h1>Projekt-Zeitstrahl</h1>
+
+  <!-- Container für einen Projekt-Zeitstrahl -->
+  <div class="project-timeline">
+    <!-- Titel und ggf. Beschreibung des Projekts -->
+    <div class="project-header">
+      <h2>{{ project.title }}</h2>
+      <p>{{ project.description }}</p>
+    </div>
+    <!-- Horizontale Zeitlinie -->
+    <div class="timeline-container">
+      <!-- Die horizontale Linie (X-Achse) -->
+      <div class="timeline-line"></div>
+      <!-- Milestone-Punkte – diese Positionen kannst du dynamisch berechnen -->
+      {% for milestone in project.milestones %}
+        <div class="timeline-point"
+             data-milestone-id="{{ milestone.id }}"
+             style="left: {{ milestone.percentage }}%;">
+          <span class="point-label">{{ milestone.short_label }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Modal oder Detailbereich für den Klick auf einen Meilenstein -->
+  <div id="milestone-detail" class="milestone-detail" style="display: none;">
+    <button id="close-detail">Schließen</button>
+    <div id="milestone-content">
+      <!-- Hier werden die Details per JavaScript eingefügt -->
+    </div>
+  </div>
+
+  <script src="/static/timeline.js"></script>
+</body>
+</html>

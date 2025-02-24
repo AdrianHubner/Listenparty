@@ -1,0 +1,96 @@
+body {
+  font-family: Arial, sans-serif;
+  background: #fafafa;
+  margin: 0;
+  padding: 20px;
+}
+
+.back-button {
+  text-decoration: none;
+  color: #007bff;
+  margin-bottom: 20px;
+  display: inline-block;
+}
+
+h1, h2 {
+  text-align: center;
+}
+
+/* Formular-Stile */
+form {
+  max-width: 600px;
+  margin: 20px auto;
+  padding: 15px;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+form label {
+  display: block;
+  margin: 10px 0 5px;
+}
+
+form input, form select, form button {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 10px;
+  box-sizing: border-box;
+}
+
+/* Kalender-Abschnitte */
+.calendar-section {
+  margin: 30px auto;
+  max-width: 800px;
+}
+
+.calendar-grid {
+  border: 1px solid #ddd;
+  background: #fff;
+  margin: 0 auto;
+  overflow: auto;
+}
+
+.calendar-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.calendar-table th, .calendar-table td {
+  border: 1px solid #ccc;
+  padding: 5px;
+  text-align: center;
+}
+
+/* Hervorhebung für Ja-Einträge */
+.alcohol-yes {
+  background-color: #ffcccc; /* z.B. ein sanftes Rot */
+}
+
+.smoke-yes {
+  background-color: #cccccc; /* z.B. ein Grauton */
+}
+
+.sport-yes {
+  background-color: #ccffcc; /* z.B. ein sanftes Grün */
+}
+
+/* Liste bisheriger Einträge */
+.habits-list {
+  max-width: 600px;
+  margin: 20px auto;
+  padding: 15px;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+.habits-list ul {
+  list-style: none;
+  padding: 0;
+}
+
+.habits-list li {
+  padding: 5px;
+  border-bottom: 1px solid #eee;
+}

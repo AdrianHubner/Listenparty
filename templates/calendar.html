@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendar</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script>
+      // Diese Variablen werden vom Server gesetzt:
+      var initialYear = {{ year }};
+      var initialMonth = {{ month }};
+    </script>
+</head>
+<body>
+    <a href="/" class="back-button">⬅ Back to Main Menu</a>
+    <h1>My Calendar</h1>
+
+    <div class="calendar-navigation">
+        <button id="prev-month">◀ Previous</button>
+        <span id="current-month">Loading...</span>
+        <button id="next-month">Next ▶</button>
+    </div>
+
+    <div class="calendar-grid">
+        {% for week in days %}
+            {% for day in week %}
+                <div class="day" data-date="{{ year }}-{{ '%02d'|format(month) }}-{{ '%02d'|format(day) }}"
+                     ondragover="event.preventDefault()" ondrop="handleDrop(event)">
+                    {% if day > 0 %}
+                        <div>{{ day }}</div>
+                        <div class="task-container">
+                            {% for task in tasks %}
+                                {% if task[1] == (year ~ '-' ~ '%02d'|format(month) ~ '-' ~ '%02d'|format(day)) %}
+                                    <div class="day-task {{ task[2] }}" data-task-id="{{ task[0] }}" draggable="true"
+                                         ondragstart="handleDragStart(event)">
+                                        {{ task[0] }}
+                                    </div>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+            {% endfor %}
+        {% endfor %}
+    </div>
+
+
+<form action="/add_recurring_task" method="POST">
+    <label for="task-title">Task Title:</label>
+    <input type="text" id="task-title-recurring" name="title" required>
+
+    <label for="task-frequency">Frequency:</label>
+    <select id="task-frequency" name="frequency">
+        <option value="daily">Daily</option>
+        <option value="weekly">Weekly</option>
+        <option value="monthly">Monthly</option>
+        <option value="yearly">Yearly</option>
+    </select>
+
+    <label for="interval-value">Interval (Optional):</label>
+    <input type="number" id="interval-value" name="interval_value" placeholder="e.g., 2 for every 2 weeks">
+
+    <label for="task-date">Start Date:</label>
+    <input type="date" id="task-date-recurring" name="start_date" required>
+
+    <!-- Option zum Einblenden wiederkehrender Aufgaben -->
+    <label>
+        <input type="checkbox" id="show-recurring-tasks"> Show Recurring Tasks
+    </label>
+
+    <button id="toggle-recurring">Show/Hide Recurring Tasks</button>
+
+    <script>
+        document.getElementById("toggle-recurring").addEventListener("click", function () {
+            document.querySelectorAll(".recurring-daily, .recurring-weekly, .recurring-monthly").forEach(function (task) {
+                task.style.display = task.style.display === "none" ? "block" : "none";
+            });
+        });
+    </script>
+
+    <button type="submit">Add Recurring Task</button>
+</form>
+
+
+
+<script>
+    const frequencySelect = document.getElementById("task-frequency");
+    const intervalLabel = document.getElementById("interval-label");
+    const intervalInput = document.getElementById("interval-value");
+
+    frequencySelect.addEventListener("change", function () {
+        if (this.value === "custom") {
+            intervalLabel.style.display = "block";
+            intervalInput.style.display = "block";
+            intervalInput.required = true; // Pflichtfeld
+        } else {
+            intervalLabel.style.display = "none";
+            intervalInput.style.display = "none";
+            intervalInput.required = false; // Nicht erforderlich
+        }
+    });
+</script>
+
+
+
+
+<form action="/add_calendar_task" method="POST" style="margin-bottom: 20px;">
+    <label for="task-title">Task Title:</label>
+    <input type="text" id="task-title" name="title" required>
+
+    <label for="task-date">Date:</label>
+    <input type="date" id="task-date" name="date" required>
+
+    <label for="task-category">Category:</label>
+    <select id="task-category" name="category" required>
+        <option value="work">Work</option>
+        <option value="personal">Personal</option>
+        <option value="health">Health</option>
+        <option value="other">Other</option>
+    </select>
+
+    <button type="submit">Add Task</button>
+</form>
+
+
+
+<script src="/static/calendar.js"></script>
+
+</body>
+</html>

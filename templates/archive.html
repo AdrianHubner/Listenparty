@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Archivierte Listen</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <!-- Du kannst hier auch eine separate CSS-Datei (z. B. archive.css) einbinden, falls nötig -->
+</head>
+<body>
+  <a href="/" class="back-button">⬅ Zurück zum Hauptmenü</a>
+  <h1>Archivierte Listen</h1>
+
+  <div class="archived-lists">
+    {% if archived_lists|length == 0 %}
+      <p>Es gibt keine archivierten Listen.</p>
+    {% else %}
+      {% for list in archived_lists %}
+      <div class="archived-card" style="background-color: {{ list.color }};">
+        <h2>{{ list.name }}</h2>
+        <!-- Optional: Du kannst hier auch eine kurze Übersicht der Aufgaben anzeigen -->
+        <form action="{{ url_for('restore_list', list_name=list.name) }}" method="POST"
+              onsubmit="return confirm('Möchtest du die Liste wiederherstellen?');">
+          <button type="submit">Liste wiederherstellen</button>
+        </form>
+      </div>
+      {% endfor %}
+    {% endif %}
+  </div>
+
+  <script src="{{ url_for('static', filename='scripts.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Timeline Diagramm</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='timeline.css') }}">
+</head>
+<body>
+  <a href="/" class="back-button">⬅ Zurück zum Hauptmenü</a>
+  <h1>Meine Timeline</h1>
+
+  <!-- Container für das Diagramm -->
+  <div id="timeline-diagram">
+    <!-- Hier wird das Diagramm per JavaScript generiert -->
+  </div>
+
+  <!-- Modal für Milestone-Details -->
+  <div id="milestone-modal" class="modal" style="display:none;">
+    <div class="modal-content">
+      <span id="modal-close" class="modal-close">&times;</span>
+      <h3 id="modal-title">Milestone Details</h3>
+      <p id="modal-detail"></p>
+    </div>
+  </div>
+
+  <!-- Formular zum Hinzufügen eines neuen Ziels -->
+  <div class="new-goal-form">
+    <h2>Neues Ziel hinzufügen</h2>
+    <form action="{{ url_for('timeline.add_goal') }}" method="POST">
+      <input type="text" name="title" placeholder="Ziel Titel" required>
+      <textarea name="description" placeholder="Beschreibung"></textarea>
+      <input type="date" name="due_date" required>
+      <!-- Farbauswahl für das Ziel -->
+      <input type="color" name="color" value="#007bff">
+      <button type="submit">Ziel hinzufügen</button>
+    </form>
+  </div>
+
+  <!-- Formular zum Hinzufügen eines neuen Milestones -->
+  <div class="new-milestone-form">
+    <h2>Neuen Milestone hinzufügen</h2>
+    <form action="{{ url_for('timeline.add_milestone') }}" method="POST">
+      <label for="goal_id">Ziel auswählen:</label>
+      <select name="goal_id" id="goal_id">
+        {% for g in goals %}
+          <option value="{{ g.goal.id }}">{{ g.goal.title }}</option>
+        {% endfor %}
+      </select>
+      <input type="text" name="title" placeholder="Milestone Titel" required>
+      <input type="date" name="due_date" required>
+      <button type="submit">Milestone hinzufügen</button>
+    </form>
+  </div>
+
+  <!-- Formular zum Hinzufügen eines neuen Milestone-Tasks -->
+  <div class="new-milestone-task-form">
+    <h2>Neuen Milestone-Task hinzufügen</h2>
+    <form action="{{ url_for('timeline.add_milestone_task') }}" method="POST">
+      <label for="milestone_id">Milestone auswählen:</label>
+      <select name="milestone_id" id="milestone_id">
+        {% for entry in goals %}
+          {% for milestone in entry.milestones %}
+            <option value="{{ milestone.id }}">{{ milestone.title }}</option>
+          {% endfor %}
+        {% endfor %}
+      </select>
+      <input type="text" name="title" placeholder="Aufgabe hinzufügen" required>
+      <button type="submit">Task hinzufügen</button>
+    </form>
+  </div>
+
+  <!-- Modal für Goal-Details -->
+  <div id="goal-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <span id="goal-modal-close" class="modal-close">&times;</span>
+      <h3 id="goal-modal-title">Goal Details</h3>
+      <p id="goal-modal-description"></p>
+      <div id="goal-modal-milestones"></div>
+    </div>
+  </div>
+
+
+  <script src="{{ url_for('static', filename='timeline.js') }}"></script>
+</body>
+</html>

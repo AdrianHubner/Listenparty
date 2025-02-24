@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>All Lists</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <h1>My Lists</h1>
+    <!-- Form to Create a New List -->
+    <form action="{{ url_for('add_list') }}" method="POST">
+        <input type="text" name="list_name" placeholder="New List Name" required>
+        <button type="submit">Create List</button>
+    </form>
+
+    <!-- Speziallisten einbinden -->
+    {% include "special_lists.html" %}
+
+<!-- Normale Listen mit Archivierungs-Button in einer Schleife -->
+<div class="grid-container">
+    {% for list in lists %}
+    <div class="card" style="background-color: {{ list.color }}" data-list-name="{{ list.name }}">
+        <h2>{{ list.name }}</h2>
+        <button class="fullscreen-btn" data-list-name="{{ list.name }}">🔍 Fullscreen</button>
+
+        <form action="{{ url_for('add_task', list_name=list.name) }}" method="POST">
+            <h3>Add a New Task</h3>
+            <input type="text" name="title" placeholder="Task Title" required>
+            <textarea name="description" placeholder="Task Description"></textarea>
+            <input type="date" name="due_date">
+            <button type="submit">Add Task</button>
+        </form>
+
+        <ul id="incomplete-tasks-{{ list.name }}">
+            {% for task in list.tasks.incomplete %}
+            <li data-task-id="{{ task[0] }}" draggable="true">
+                <input type="checkbox">
+                <strong>{{ task[1] }}</strong> - {{ task[2] }}
+                {% if task[3] %} (Due: {{ task[3] }}) {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+
+        <ul id="completed-tasks-{{ list.name }}">
+            {% for task in list.tasks.completed %}
+            <li data-task-id="{{ task[0] }}" style="text-decoration: line-through; color: gray;">
+                <input type="checkbox" checked>
+                <strong>{{ task[1] }}</strong> - {{ task[2] }}
+                {% if task[3] %} (Due: {{ task[3] }}) {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+
+        <!-- Archivierungs-Button in derselben Karte -->
+        <form action="{{ url_for('archive_list', list_name=list.name) }}" method="POST"
+              onsubmit="return confirm('Bist du sicher, dass du die Liste archivieren möchtest?');">
+          <button type="submit">Liste archivieren</button>
+        </form>
+    </div>
+    {% endfor %}
+</div>
+
+
+<h2>Daily Motivation</h2>
+<button id="get-quote-btn">Show Today's Quote</button>
+<p id="quote-display" style="margin-top: 20px; font-size: 1.2em; color: #333;"></p>
+
+<script>
+    document.getElementById("get-quote-btn").addEventListener("click", function () {
+        fetch("/daily_quote")
+            .then(response => response.text())
+            .then(quote => {
+                document.getElementById("quote-display").textContent = quote;
+            })
+            .catch(error => {
+                console.error("Error fetching quote:", error);
+            });
+    });
+</script>
+
+
+<a href="{{ url_for('daily_video') }}">
+    <button style="margin-top: 20px; padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 5px;">
+        Watch Today's Motivation
+    </button>
+</a>
+
+<a href="/calendar">
+    <button style="margin-top: 20px; padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 5px;">
+        Open Calendar
+    </button>
+</a>
+
+
+<a href="{{ url_for('timeline.show_timeline') }}">
+  <button style="padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 5px;">
+    Go to Timeline
+  </button>
+</a>
+
+<a href="{{ url_for('archived_lists') }}">
+  <button type="button">Archivierte Listen anzeigen</button>
+</a>
+
+
+
+<a href="{{ url_for('habits.show_habits') }}">
+  <button type="button">Gewohnheitstracker</button>
+</a>
+
+
+<!-- Kontextmenü -->
+<div id="context-menu" style="display: none; position: absolute; background-color: white; border: 1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 1000; border-radius: 5px; padding: 10px;">
+    <ul style="list-style: none; margin: 0; padding: 0;">
+        <li class="menu-item" data-action="delete">Delete Task</li>
+        <li class="menu-item" data-action="move">Move Task</li>
+        <li class="menu-item" data-action="rename">Rename Task</li>
+    </ul>
+</div>
+
+
+
+<script src="/static/scripts.js"></script>
+
+
+</body>
+</html>

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gewohnheitstracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='habits.css') }}">
+</head>
+<body>
+  <a href="/" class="back-button">⬅ Zurück zum Hauptmenü</a>
+  <h1>Gewohnheitstracker</h1>
+
+  <!-- Formular zum Aktualisieren eines Tages -->
+  <form action="{{ url_for('habits.update_habit') }}" method="POST">
+    <label for="habit_date">Datum:</label>
+    <input type="date" id="habit_date" name="habit_date" required>
+
+    <label>Alkohol trinken:</label>
+    <select name="alcohol">
+      <option value="0">Nein</option>
+      <option value="1">Ja</option>
+    </select>
+
+    <label>Rauchen:</label>
+    <select name="smoke">
+      <option value="0">Nein</option>
+      <option value="1">Ja</option>
+    </select>
+
+    <label>Sport machen:</label>
+    <select name="sport">
+      <option value="0">Nein</option>
+      <option value="1">Ja</option>
+    </select>
+
+    <button type="submit">Eintrag speichern</button>
+  </form>
+
+  <!-- Kalender für Alkohol -->
+  <div id="calendar-alcohol" class="calendar-section">
+    <h2>Alkohol</h2>
+    <div class="calendar-grid" id="calendar-grid-alcohol"></div>
+  </div>
+
+  <!-- Kalender für Rauchen -->
+  <div id="calendar-smoke" class="calendar-section">
+    <h2>Rauchen</h2>
+    <div class="calendar-grid" id="calendar-grid-smoke"></div>
+  </div>
+
+  <!-- Kalender für Sport -->
+  <div id="calendar-sport" class="calendar-section">
+    <h2>Sport</h2>
+    <div class="calendar-grid" id="calendar-grid-sport"></div>
+  </div>
+
+  <!-- Optional: Eine Liste bisheriger Einträge -->
+  <div class="habits-list">
+    <h2>Bisherige Einträge</h2>
+    <ul>
+      {% for habit in habits %}
+      <li>
+        {{ habit.habit_date }} – Alkohol: {{ "Ja" if habit.alcohol == 1 else "Nein" }},
+        Rauchen: {{ "Ja" if habit.smoke == 1 else "Nein" }},
+        Sport: {{ "Ja" if habit.sport == 1 else "Nein" }}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <script src="{{ url_for('static', filename='habits.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Special Lists</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <h1>Special Lists</h1>
+<div class="grid-container">
+
+    <div class="card" style="background-color: #ffcccc;" data-list-name="Today">
+    <h2>Today</h2>
+    <button class="fullscreen-btn" data-list-name="Today">🔍 Fullscreen</button>
+
+    <!-- Formular zum Hinzufügen -->
+    <form action="/add_task_to_today" method="POST">
+        <h3>Add a Task to Today</h3>
+        <input type="text" name="title" placeholder="Task Title" required>
+        <textarea name="description" placeholder="Task Description"></textarea>
+        <input type="date" name="due_date">
+        <input type="number" name="estimated_time" placeholder="Estimated Time (min)" >
+        <button type="submit">Add Task</button>
+    </form>
+
+    <!-- Unvollständige Aufgaben -->
+    <ul id="incomplete-tasks-Today">
+        {% for task in today_tasks.incomplete %}
+        <li data-task-id="{{ task[0] }}" draggable="true">
+            <input type="checkbox">
+            <strong>{{ task[1] }}</strong> - {{ task[2] }}
+            {% if task[3] %} (Due: {{ task[3] }}) {% endif %}
+            <span class="task-time">~{{ task[4] }} min</span>
+        </li>
+        {% endfor %}
+    </ul>
+
+    <!-- Abgeschlossene Aufgaben -->
+    <ul id="completed-tasks-Today">
+        {% for task in today_tasks.completed %}
+        <li data-task-id="{{ task[0] }}" style="text-decoration: line-through; color: gray;">
+            <input type="checkbox" checked>
+            <strong>{{ task[1] }}</strong> - {{ task[2] }}
+            {% if task[3] %} (Due: {{ task[3] }}) {% endif %}
+            <span class="task-time">~{{ task[4] }} min</span>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+
+
+    <!-- Next Day-Liste -->
+    <div class="card" style="background-color: #ccffcc;" data-list-name="Next Day">
+        <h2>Next Day</h2>
+        <button class="fullscreen-btn" data-list-name="Next Day">🔍 Fullscreen</button>
+
+        <!-- Formular zum Hinzufügen -->
+        <form action="/add_task_to_next_day" method="POST">
+            <h3>Add a Task to Next Day</h3>
+            <input type="text" name="title" placeholder="Task Title" required>
+            <textarea name="description" placeholder="Task Description"></textarea>
+            <input type="date" name="due_date">
+            <button type="submit">Add Task</button>
+        </form>
+
+        <!-- Unvollständige Aufgaben -->
+        <ul id="incomplete-tasks-Next Day">
+            {% for task in next_day_tasks.incomplete %}
+            <li data-task-id="{{ task[0] }}" draggable="true">
+                <input type="checkbox">
+                <strong>{{ task[1] }}</strong> - {{ task[2] }}
+                {% if task[3] %} (Due: {{ task[3] }}) {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+
+        <!-- Abgeschlossene Aufgaben -->
+        <ul id="completed-tasks-Next Day">
+            {% for task in next_day_tasks.completed %}
+            <li data-task-id="{{ task[0] }}" style="text-decoration: line-through; color: gray;">
+                <input type="checkbox" checked>
+                <strong>{{ task[1] }}</strong> - {{ task[2] }}
+                {% if task[3] %} (Due: {{ task[3] }}) {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+
+    <!-- This Week-Liste -->
+    <div class="card" style="background-color: #fffccc;" data-list-name="This Week">
+        <h2>This Week</h2>
+        <button class="fullscreen-btn" data-list-name="This Week">🔍 Fullscreen</button>
+
+        <!-- Formular zum Hinzufügen -->
+        <form action="/add_task_to_this_week" method="POST">
+            <h3>Add a Task to This Week</h3>
+            <input type="text" name="title" placeholder="Task Title" required>
+            <textarea name="description" placeholder="Task Description"></textarea>
+            <input type="date" name="due_date">
+            <button type="submit">Add Task</button>
+        </form>
+
+        <!-- Unvollständige Aufgaben -->
+        <ul id="incomplete-tasks-This Week">
+            {% for task in week_tasks.incomplete %}
+            <li data-task-id="{{ task[0] }}" draggable="true">
+                <input type="checkbox">
+                <strong>{{ task[1] }}</strong> - {{ task[2] }}
+                {% if task[3] %} (Due: {{ task[3] }}) {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+
+        <!-- Abgeschlossene Aufgaben -->
+        <ul id="completed-tasks-This Week">
+            {% for task in week_tasks.completed %}
+            <li data-task-id="{{ task[0] }}" style="text-decoration: line-through; color: gray;">
+                <input type="checkbox" checked>
+                <strong>{{ task[1] }}</strong> - {{ task[2] }}
+                {% if task[3] %} (Due: {{ task[3] }}) {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+
+    <!-- This Month-Liste -->
+    <div class="card" style="background-color: #ccccff;" data-list-name="This Month">
+        <h2>This Month</h2>
+        <button class="fullscreen-btn" data-list-name="This Month">🔍 Fullscreen</button>
+
+        <!-- Formular zum Hinzufügen -->
+        <form action="/add_task_to_this_month" method="POST">
+            <h3>Add a Task to This Month</h3>
+            <input type="text" name="title" placeholder="Task Title" required>
+            <textarea name="description" placeholder="Task Description"></textarea>
+            <input type="date" name="due_date">
+            <button type="submit">Add Task</button>
+        </form>
+
+        <!-- Unvollständige Aufgaben -->
+        <ul id="incomplete-tasks-This Month">
+            {% for task in month_tasks.incomplete %}
+            <li data-task-id="{{ task[0] }}" draggable="true">
+                <input type="checkbox">
+                <strong>{{ task[1] }}</strong> - {{ task[2] }}
+                {% if task[3] %} (Due: {{ task[3] }}) {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+
+        <!-- Abgeschlossene Aufgaben -->
+        <ul id="completed-tasks-This Month">
+            {% for task in month_tasks.completed %}
+            <li data-task-id="{{ task[0] }}" style="text-decoration: line-through; color: gray;">
+                <input type="checkbox" checked>
+                <strong>{{ task[1] }}</strong> - {{ task[2] }}
+                {% if task[3] %} (Due: {{ task[3] }}) {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+
+</div>
+
+
+</body>
+</html>
