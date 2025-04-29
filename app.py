@@ -1,5 +1,12 @@
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 
+from flask import Flask
+
+app = Flask(__name__)
+app.secret_key = 'dein_einzigartiger_geheimer_schluessel'  # Ersetze dies durch einen langen, zufälligen String
+
+
+
 from list_manager import ListManager, Task
 from utils import get_daily_video
 from datetime import date, timedelta
@@ -18,7 +25,6 @@ manager = ListManager()  # Instanziiere den ListManager
 #manager.move_calendar_tasks_to_special_lists()
 #manager.add_recurring_tasks_to_special_lists()
 
-app = Flask(__name__)  # Flask-App erstellen
 
 from timeline import timeline_bp
 
@@ -29,6 +35,10 @@ timeline_manager = TimelineManager()
 
 from habits import habits_bp
 app.register_blueprint(habits_bp, url_prefix="/habits")
+
+from secret_lists import secret_bp
+app.register_blueprint(secret_bp, url_prefix="/secret")
+
 
 
 
@@ -194,6 +204,12 @@ def archived_lists():
         for list_name in archived
     ]
     return render_template("archive.html", archived_lists=archived_lists_with_data)
+
+
+@app.route("/view_list/<list_name>")
+def view_list(list_name):
+    tasks = manager.get_tasks(list_name)
+    return render_template("view_lists.html", list_name=list_name, tasks=tasks)
 
 
 

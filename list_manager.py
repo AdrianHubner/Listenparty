@@ -337,7 +337,12 @@ class ListManager:
     def get_all_lists(self):
         connection = self.get_db_connection()
         cursor = connection.cursor()
-        cursor.execute("SELECT DISTINCT list_name FROM tasks WHERE archived = 0")
+        cursor.execute("""
+            SELECT DISTINCT list_name 
+            FROM tasks 
+            WHERE archived = 0 
+              AND LOWER(list_name) NOT IN (SELECT LOWER(name) FROM secret_lists)
+        """)
         rows = cursor.fetchall()
         connection.close()
         return [row[0] for row in rows]

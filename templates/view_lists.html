@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ list_name }} - Liste</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <style>
+    /* Beispielhafte CSS-Anpassungen */
+    .task-item {
+      display: flex;
+      align-items: center;
+      padding: 5px;
+      border-bottom: 1px solid #eee;
+    }
+    .task-item input[type="checkbox"] {
+      margin-right: 10px;
+    }
+    .new-task-form {
+      margin-top: 20px;
+      border-top: 1px solid #ddd;
+      padding-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <a href="{{ url_for('index') }}" class="back-button">⬅ Zurück zum Hauptmenü</a>
+  <h1>{{ list_name }} - Aufgaben</h1>
+
+  <!-- Anzeige der Aufgaben -->
+  <div class="list-container">
+    {% if tasks.incomplete %}
+      <h2>Offene Aufgaben</h2>
+      <ul>
+        {% for task in tasks.incomplete %}
+          <li class="task-item" data-task-id="{{ task[0] }}">
+            <input type="checkbox">
+            <div>
+              <strong>{{ task[1] }}</strong> - {{ task[2] }}
+              {% if task[3] %}
+                <span>(Due: {{ task[3] }})</span>
+              {% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>Keine offenen Aufgaben vorhanden.</p>
+    {% endif %}
+
+    {% if tasks.completed %}
+      <h2>Erledigte Aufgaben</h2>
+      <ul>
+        {% for task in tasks.completed %}
+          <li class="task-item" style="text-decoration: line-through; color: gray;" data-task-id="{{ task[0] }}">
+            <input type="checkbox" checked>
+            <div>
+              <strong>{{ task[1] }}</strong> - {{ task[2] }}
+              {% if task[3] %}
+                <span>(Due: {{ task[3] }})</span>
+              {% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+
+  <!-- Formular zum Hinzufügen neuer Aufgaben – neue Aufgaben werden über die SQL-Abfrage oben in absteigender Reihenfolge angezeigt -->
+  <div class="new-task-form">
+    <h2>Neue Aufgabe hinzufügen</h2>
+    <form action="{{ url_for('add_task', list_name=list_name) }}" method="POST">
+      <input type="text" name="title" placeholder="Task Title" required>
+      <textarea name="description" placeholder="Task Description"></textarea>
+      <input type="date" name="due_date">
+      <button type="submit">Add Task</button>
+    </form>
+  </div>
+
+  <script src="{{ url_for('static', filename='scripts.js') }}"></script>
+</body>
+</html>

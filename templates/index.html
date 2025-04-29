@@ -32,34 +32,44 @@
             <button type="submit">Add Task</button>
         </form>
 
-        <ul id="incomplete-tasks-{{ list.name }}">
-            {% for task in list.tasks.incomplete %}
-            <li data-task-id="{{ task[0] }}" draggable="true">
-                <input type="checkbox">
-                <strong>{{ task[1] }}</strong> - {{ task[2] }}
-                {% if task[3] %} (Due: {{ task[3] }}) {% endif %}
-            </li>
-            {% endfor %}
-        </ul>
+         {% if list.is_secret %}
+          <!-- Inhalt als gesperrt markieren -->
+          <div class="locked-overlay">
+            <p>Diese Liste ist passwortgeschützt.</p>
+            <button class="unlock-btn" data-list-name="{{ list.name }}">Entsperren</button>
+          </div>
+        {% else %}
 
-        <ul id="completed-tasks-{{ list.name }}">
-            {% for task in list.tasks.completed %}
-            <li data-task-id="{{ task[0] }}" style="text-decoration: line-through; color: gray;">
-                <input type="checkbox" checked>
-                <strong>{{ task[1] }}</strong> - {{ task[2] }}
-                {% if task[3] %} (Due: {{ task[3] }}) {% endif %}
-            </li>
-            {% endfor %}
-        </ul>
+            <ul id="incomplete-tasks-{{ list.name }}">
+                {% for task in list.tasks.incomplete %}
+                <li data-task-id="{{ task[0] }}" draggable="true">
+                    <input type="checkbox">
+                    <strong>{{ task[1] }}</strong> - {{ task[2] }}
+                    {% if task[3] %} (Due: {{ task[3] }}) {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
 
-        <!-- Archivierungs-Button in derselben Karte -->
-        <form action="{{ url_for('archive_list', list_name=list.name) }}" method="POST"
-              onsubmit="return confirm('Bist du sicher, dass du die Liste archivieren möchtest?');">
-          <button type="submit">Liste archivieren</button>
-        </form>
-    </div>
-    {% endfor %}
+            <ul id="completed-tasks-{{ list.name }}">
+                {% for task in list.tasks.completed %}
+                <li data-task-id="{{ task[0] }}" style="text-decoration: line-through; color: gray;">
+                    <input type="checkbox" checked>
+                    <strong>{{ task[1] }}</strong> - {{ task[2] }}
+                    {% if task[3] %} (Due: {{ task[3] }}) {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+
+            <!-- Archivierungs-Button in derselben Karte -->
+            <form action="{{ url_for('archive_list', list_name=list.name) }}" method="POST"
+                  onsubmit="return confirm('Bist du sicher, dass du die Liste archivieren möchtest?');">
+              <button type="submit">Liste archivieren</button>
+            </form>
+            {% endif %}
+        </div>
+        {% endfor %}
 </div>
+
 
 
 <h2>Daily Motivation</h2>
@@ -102,6 +112,11 @@
 <a href="{{ url_for('archived_lists') }}">
   <button type="button">Archivierte Listen anzeigen</button>
 </a>
+
+<a href="{{ url_for('secret.show_secret_lists') }}">
+  <button type="button">Geheime Listen anzeigen</button>
+</a>
+
 
 
 
