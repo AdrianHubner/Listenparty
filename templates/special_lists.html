@@ -16,7 +16,7 @@
 
     <!-- Formular zum Hinzufügen -->
     <form action="/add_task_to_today" method="POST">
-        <h3>Add a Task to Today</h3>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">        <h3>Add a Task to Today</h3>
         <input type="text" name="title" placeholder="Task Title" required>
         <textarea name="description" placeholder="Task Description"></textarea>
         <input type="date" name="due_date">
@@ -57,7 +57,7 @@
 
         <!-- Formular zum Hinzufügen -->
         <form action="/add_task_to_next_day" method="POST">
-            <h3>Add a Task to Next Day</h3>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">            <h3>Add a Task to Next Day</h3>
             <input type="text" name="title" placeholder="Task Title" required>
             <textarea name="description" placeholder="Task Description"></textarea>
             <input type="date" name="due_date">
@@ -95,7 +95,7 @@
 
         <!-- Formular zum Hinzufügen -->
         <form action="/add_task_to_this_week" method="POST">
-            <h3>Add a Task to This Week</h3>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">            <h3>Add a Task to This Week</h3>
             <input type="text" name="title" placeholder="Task Title" required>
             <textarea name="description" placeholder="Task Description"></textarea>
             <input type="date" name="due_date">
@@ -133,7 +133,7 @@
 
         <!-- Formular zum Hinzufügen -->
         <form action="/add_task_to_this_month" method="POST">
-            <h3>Add a Task to This Month</h3>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">            <h3>Add a Task to This Month</h3>
             <input type="text" name="title" placeholder="Task Title" required>
             <textarea name="description" placeholder="Task Description"></textarea>
             <input type="date" name="due_date">

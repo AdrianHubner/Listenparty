@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Register</title>
+</head>
+<body>
+
+<h1>Registrieren</h1>
+<form method="POST" action="{{ url_for('auth.register') }}">
+  <!-- CSRF-Token versteckt im Hidden-Field -->
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <label>Username <input name="username"></label>
+  <label>Password <input type="password" name="password"></label>
+  <button type="submit">Registrieren</button>
+</form>
+
+
+</body>
+</html>

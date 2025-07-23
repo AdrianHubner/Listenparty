@@ -47,7 +47,7 @@
 
 
 <form action="/add_recurring_task" method="POST">
-    <label for="task-title">Task Title:</label>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">    <label for="task-title">Task Title:</label>
     <input type="text" id="task-title-recurring" name="title" required>
 
     <label for="task-frequency">Frequency:</label>
@@ -106,7 +106,7 @@
 
 
 <form action="/add_calendar_task" method="POST" style="margin-bottom: 20px;">
-    <label for="task-title">Task Title:</label>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">    <label for="task-title">Task Title:</label>
     <input type="text" id="task-title" name="title" required>
 
     <label for="task-date">Date:</label>

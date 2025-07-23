@@ -10,12 +10,29 @@
     <h1>My Lists</h1>
     <!-- Form to Create a New List -->
     <form action="{{ url_for('add_list') }}" method="POST">
-        <input type="text" name="list_name" placeholder="New List Name" required>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">        <input type="text" name="list_name" placeholder="New List Name" required>
         <button type="submit">Create List</button>
     </form>
 
+    <!-- irgendwo in deiner Navbar / deinem Header -->
+    <form action="{{ url_for('auth.logout') }}" method="POST" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit">Logout</button>
+    </form>
+
+
+
     <!-- Speziallisten einbinden -->
     {% include "special_lists.html" %}
+
+{% if current_user.is_authenticated %}
+  <a href="{{ url_for('auth.logout') }}">Abmelden</a>
+{% else %}
+  <a href="{{ url_for('auth.login') }}">Login</a>
+  <a href="{{ url_for('auth.register') }}">Registrieren</a>
+{% endif %}
+
+
 
 <!-- Normale Listen mit Archivierungs-Button in einer Schleife -->
 <div class="grid-container">
@@ -25,7 +42,7 @@
         <button class="fullscreen-btn" data-list-name="{{ list.name }}">🔍 Fullscreen</button>
 
         <form action="{{ url_for('add_task', list_name=list.name) }}" method="POST">
-            <h3>Add a New Task</h3>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">            <h3>Add a New Task</h3>
             <input type="text" name="title" placeholder="Task Title" required>
             <textarea name="description" placeholder="Task Description"></textarea>
             <input type="date" name="due_date">
@@ -63,7 +80,7 @@
             <!-- Archivierungs-Button in derselben Karte -->
             <form action="{{ url_for('archive_list', list_name=list.name) }}" method="POST"
                   onsubmit="return confirm('Bist du sicher, dass du die Liste archivieren möchtest?');">
-              <button type="submit">Liste archivieren</button>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">              <button type="submit">Liste archivieren</button>
             </form>
             {% endif %}
         </div>

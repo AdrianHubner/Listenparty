@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Anmelden</title>
+</head>
+<body>
+
+<h1>Anmelden</h1>
+<form method="POST" action="{{ url_for('auth.login') }}">
+  <!-- CSRF-Token versteckt im Hidden-Field -->
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <input name="username" placeholder="Benutzername" required>
+  <input name="password" type="password" placeholder="Passwort" required>
+  <button type="submit">Login</button>
+</form>
+
+<!-- Hier kommt der Link zur Registrierung -->
+  <p>Noch keinen Account?
+    <a href="{{ url_for('auth.register') }}">Jetzt registrieren</a>
+  </p>
+
+</body>
+</html>

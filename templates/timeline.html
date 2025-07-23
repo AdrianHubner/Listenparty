@@ -28,7 +28,7 @@
   <div class="new-goal-form">
     <h2>Neues Ziel hinzufügen</h2>
     <form action="{{ url_for('timeline.add_goal') }}" method="POST">
-      <input type="text" name="title" placeholder="Ziel Titel" required>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">      <input type="text" name="title" placeholder="Ziel Titel" required>
       <textarea name="description" placeholder="Beschreibung"></textarea>
       <input type="date" name="due_date" required>
       <!-- Farbauswahl für das Ziel -->
@@ -41,7 +41,7 @@
   <div class="new-milestone-form">
     <h2>Neuen Milestone hinzufügen</h2>
     <form action="{{ url_for('timeline.add_milestone') }}" method="POST">
-      <label for="goal_id">Ziel auswählen:</label>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">      <label for="goal_id">Ziel auswählen:</label>
       <select name="goal_id" id="goal_id">
         {% for g in goals %}
           <option value="{{ g.goal.id }}">{{ g.goal.title }}</option>
@@ -57,7 +57,7 @@
   <div class="new-milestone-task-form">
     <h2>Neuen Milestone-Task hinzufügen</h2>
     <form action="{{ url_for('timeline.add_milestone_task') }}" method="POST">
-      <label for="milestone_id">Milestone auswählen:</label>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">      <label for="milestone_id">Milestone auswählen:</label>
       <select name="milestone_id" id="milestone_id">
         {% for entry in goals %}
           {% for milestone in entry.milestones %}

@@ -4,6 +4,9 @@ import sqlite3
 from datetime import datetime, timedelta, date
 from prompt_toolkit import prompt
 from prompt_toolkit.completion import WordCompleter
+from flask_login import current_user
+
+
 
 def select_list(manager):
     """
@@ -135,39 +138,48 @@ class ListManager:
 
     def add_task(self, list_name, title, description="", due_date=None, estimated_time=0):
         """
-        Add a new task to the database.
+        Add a new task to the database, tagged with dem aktuellen User.
         """
         connection = self.get_db_connection()
         cursor = connection.cursor()
         cursor.execute("""
-            INSERT INTO tasks (list_name, title, description, due_date, estimated_time, completed)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (list_name, title, description, due_date, estimated_time, 0))
+               INSERT INTO tasks
+                 (list_name, title, description, due_date, estimated_time, completed, user_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+           """, (
+            list_name,
+            title,
+            description,
+            due_date,
+            estimated_time,
+            0,
+            current_user.id
+        ))
         connection.commit()
         connection.close()
 
     def get_tasks(self, list_name):
         """
-        Fetches tasks for a given list name, grouped by completion status.
+        Fetches tasks for eine Liste und den aktuellen User, gruppiert nach Status.
         """
         connection = self.get_db_connection()
         cursor = connection.cursor()
 
-        # Fetch incomplete tasks
+        # Unvollständige
         cursor.execute("""
-            SELECT id, title, description, due_date, completed
-            FROM tasks
-            WHERE list_name = ? AND completed = 0
-            ORDER BY id DESC  -- Sortiere nach ID in absteigender Reihenfolge
-        """, (list_name,))
+               SELECT id, title, description, due_date, completed
+               FROM tasks
+               WHERE list_name = ? AND completed = 0 AND user_id = ?
+               ORDER BY id DESC
+           """, (list_name, current_user.id))
         incomplete_tasks = cursor.fetchall()
 
-        # Fetch completed tasks
+        # Abgeschlossene
         cursor.execute("""
-            SELECT id, title, description, due_date, completed
-            FROM tasks
-            WHERE list_name = ? AND completed = 1
-        """, (list_name,))
+               SELECT id, title, description, due_date, completed
+               FROM tasks
+               WHERE list_name = ? AND completed = 1 AND user_id = ?
+           """, (list_name, current_user.id))
         completed_tasks = cursor.fetchall()
 
         connection.close()
@@ -177,7 +189,9 @@ class ListManager:
         }
 
     def update_task(self, task_id, title=None, description=None, due_date=None, completed=None):
-        query = "UPDATE tasks SET "
+        """
+        Aktualisiert einen Task, nur wenn er dem aktuell eingeloggten User gehört.
+        """
         updates = []
         params = []
 
@@ -194,10 +208,21 @@ class ListManager:
             updates.append("completed = ?")
             params.append(int(completed))
 
-        query += ", ".join(updates) + " WHERE id = ?"
+        # Baue das UPDATE-Statement – schließe user_id des aktuellen Users mit ein
+        query = (
+                "UPDATE tasks SET "
+                + ", ".join(updates)
+                + " WHERE id = ? AND user_id = ?"
+        )
         params.append(task_id)
-        self.cursor.execute(query, params)
-        self.conn.commit()
+        params.append(current_user.id)
+
+        # Führe das Update über eine neue DB-Verbindung aus
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute(query, params)
+        conn.commit()
+        conn.close()
 
     def update_task_order(self, new_order):
         connection = self.get_db_connection()
@@ -205,35 +230,44 @@ class ListManager:
 
         for index, task_id in enumerate(new_order):
             cursor.execute(
-                "UPDATE tasks SET position = ? WHERE id = ?",
-                (index, task_id)
+                "UPDATE tasks SET position = ? WHERE id = ? AND user_id = ?",
+                (index, task_id, current_user.id)
             )
 
         connection.commit()
         connection.close()
 
     def add_recurring_task(self, title, frequency, start_date, interval_value=1):
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
-        cursor.execute("""
-            INSERT INTO recurring_tasks (title, frequency, start_date, interval_value)
-            VALUES (?, ?, ?, ?)
-        """, (title, frequency, start_date, interval_value))
-
-        connection.commit()
-        connection.close()
+        """
+        Add a new recurring task for the current user.
+        """
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO recurring_tasks
+                (title, frequency, start_date, interval_value, user_id)
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            title,
+            frequency,
+            start_date,
+            interval_value,
+            current_user.id
+        ))
+        conn.commit()
+        conn.close()
 
     def should_run_task_addition(self, task_name):
         """
         Überprüft, ob eine bestimmte Aufgabe heute bereits hinzugefügt wurde.
         Falls nicht, speichert sie das Datum der letzten Ausführung in der Datenbank.
+        Dieser Check bleibt global, erfasst also nicht User-spezifisch.
         """
         connection = self.get_db_connection()
         cursor = connection.cursor()
 
         today = date.today().isoformat()
 
-        # Prüfen, ob diese Aufgabe heute bereits ausgeführt wurde
         cursor.execute("""
             SELECT last_run FROM last_execution WHERE task = ?
         """, (task_name,))
@@ -241,373 +275,463 @@ class ListManager:
 
         if last_run and last_run[0] == today:
             connection.close()
-            return False  # Die Aufgabe wurde heute schon ausgeführt, nicht erneut ausführen
+            return False
 
-        # Falls noch nicht ausgeführt, speichere das aktuelle Datum als "zuletzt ausgeführt"
         cursor.execute("""
             INSERT INTO last_execution (task, last_run)
-            VALUES (?, ?) ON CONFLICT(task) DO UPDATE SET last_run = excluded.last_run
+            VALUES (?, ?)
+            ON CONFLICT(task) DO UPDATE SET last_run = excluded.last_run
         """, (task_name, today))
 
         connection.commit()
         connection.close()
-        return True  # Die Aufgabe kann jetzt ausgeführt werden
+        return True
 
     def add_recurring_tasks_to_special_lists(self):
         """
-        Fügt wiederkehrende Aufgaben den richtigen Listen hinzu:
-        - 'daily' → Today
-        - 'weekly' → This Week (jeden Montag)
-        - 'monthly' → This Month (jeden Monatsersten)
-        - Individuelle Intervalle für Tage, Wochen, Monate
+        Fügt wiederkehrende Aufgaben des aktuellen Users den Spezial‑Listen hinzu.
         """
-
-
         today = date.today()
-        week_start = today - timedelta(days=today.weekday())  # Start der Woche (Montag)
-        month_start = today.replace(day=1)  # Start des Monats
+        week_start = today - timedelta(days=today.weekday())
+        month_start = today.replace(day=1)
 
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
+        conn = self.get_db_connection()
+        cur = conn.cursor()
 
-        # **Tägliche Aufgaben → Today (Verhindert doppelte Einträge)**
-        cursor.execute("""
-            INSERT INTO tasks (title, list_name, due_date, completed)
-            SELECT title, 'Today', ?, 0 FROM recurring_tasks
-            WHERE frequency = 'daily'
-            AND NOT EXISTS (SELECT 1 FROM tasks WHERE title = recurring_tasks.title AND due_date = ?)
-        """, (today.isoformat(), today.isoformat()))
+        # tägliche recurring_tasks nur des current_user einfügen
+        cur.execute("""
+            INSERT INTO tasks (title, list_name, due_date, completed, user_id)
+            SELECT title, 'Today', ?, 0, ?
+            FROM recurring_tasks
+            WHERE frequency = 'daily' AND user_id = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM tasks
+                WHERE title = recurring_tasks.title
+                  AND due_date = ?
+                  AND user_id = ?
+              )
+        """, (today.isoformat(),
+              current_user.id,
+              current_user.id,
+              today.isoformat(),
+              current_user.id))
 
-        # **Benutzerdefinierte tägliche Intervalle**
-        cursor.execute("""
-            INSERT INTO tasks (title, list_name, due_date, completed)
-            SELECT title, 'Today', ?, 0 FROM recurring_tasks
-            WHERE frequency = 'custom_days' AND interval_value IS NOT NULL
-            AND (julianday(?) - julianday(start_date)) % interval_value = 0
-            AND NOT EXISTS (SELECT 1 FROM tasks WHERE title = recurring_tasks.title AND due_date = ?)
-        """, (today.isoformat(), today.isoformat(), today.isoformat()))
+        # tomorrow
+        tomorrow = (today + timedelta(days=1)).isoformat()
+        cur.execute("""
+            INSERT INTO tasks (title, list_name, due_date, completed, user_id)
+            SELECT title, 'Next Day', ?, 0, ?
+            FROM recurring_tasks
+            WHERE frequency = 'daily' AND user_id = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM tasks
+                WHERE title = recurring_tasks.title
+                  AND due_date = ?
+                  AND user_id = ?
+              )
+        """, (tomorrow,
+              current_user.id,
+              current_user.id,
+              tomorrow,
+              current_user.id))
 
-        tomorrow = date.today() + timedelta(days=1)
-        cursor.execute("""
-            INSERT INTO tasks (title, list_name, due_date, completed)
-            SELECT title, 'Next Day', ?, 0 FROM recurring_tasks
-            WHERE frequency = 'daily'
-            AND NOT EXISTS (SELECT 1 FROM tasks WHERE title = recurring_tasks.title AND due_date = ?)
-        """, (tomorrow.isoformat(), tomorrow.isoformat()))
-
-        # **Wöchentliche Aufgaben → This Week (Nur Montags)**
+        # montags wöchentliche
         if today == week_start:
-            cursor.execute("""
-                INSERT INTO tasks (title, list_name, due_date, completed)
-                SELECT title, 'This Week', ?, 0 FROM recurring_tasks
-                WHERE frequency = 'weekly'
-                AND NOT EXISTS (SELECT 1 FROM tasks WHERE title = recurring_tasks.title AND due_date = ?)
-            """, (week_start.isoformat(), week_start.isoformat()))
+            cur.execute("""
+                INSERT INTO tasks (title, list_name, due_date, completed, user_id)
+                SELECT title, 'This Week', ?, 0, ?
+                FROM recurring_tasks
+                WHERE frequency = 'weekly' AND user_id = ?
+                  AND NOT EXISTS (
+                    SELECT 1 FROM tasks
+                    WHERE title = recurring_tasks.title
+                      AND due_date = ?
+                      AND user_id = ?
+                  )
+            """, (week_start.isoformat(),
+                  current_user.id,
+                  current_user.id,
+                  week_start.isoformat(),
+                  current_user.id))
 
-            # **Benutzerdefinierte wöchentliche Intervalle**
-            cursor.execute("""
-                INSERT INTO tasks (title, list_name, due_date, completed)
-                SELECT title, 'This Week', ?, 0 FROM recurring_tasks
-                WHERE frequency = 'custom_weeks' AND interval_value IS NOT NULL
-                AND ((julianday(?) - julianday(start_date)) / 7) % interval_value = 0
-                AND NOT EXISTS (SELECT 1 FROM tasks WHERE title = recurring_tasks.title AND due_date = ?)
-            """, (week_start.isoformat(), week_start.isoformat(), week_start.isoformat()))
-
-        # **Monatliche Aufgaben → This Month (Nur am 1. des Monats)**
+        # am Monatsanfang monatliche
         if today == month_start:
-            cursor.execute("""
-                INSERT INTO tasks (title, list_name, due_date, completed)
-                SELECT title, 'This Month', ?, 0 FROM recurring_tasks
-                WHERE frequency = 'monthly'
-                AND NOT EXISTS (SELECT 1 FROM tasks WHERE title = recurring_tasks.title AND due_date = ?)
-            """, (month_start.isoformat(), month_start.isoformat()))
+            cur.execute("""
+                INSERT INTO tasks (title, list_name, due_date, completed, user_id)
+                SELECT title, 'This Month', ?, 0, ?
+                FROM recurring_tasks
+                WHERE frequency = 'monthly' AND user_id = ?
+                  AND NOT EXISTS (
+                    SELECT 1 FROM tasks
+                    WHERE title = recurring_tasks.title
+                      AND due_date = ?
+                      AND user_id = ?
+                  )
+            """, (month_start.isoformat(),
+                  current_user.id,
+                  current_user.id,
+                  month_start.isoformat(),
+                  current_user.id))
 
-            # **Benutzerdefinierte monatliche Intervalle**
-            cursor.execute("""
-                INSERT INTO tasks (title, list_name, due_date, completed)
-                SELECT title, 'This Month', ?, 0 FROM recurring_tasks
-                WHERE frequency = 'custom_months' AND interval_value IS NOT NULL
-                AND (strftime('%m', ?) - strftime('%m', start_date)) % interval_value = 0
-                AND NOT EXISTS (SELECT 1 FROM tasks WHERE title = recurring_tasks.title AND due_date = ?)
-            """, (month_start.isoformat(), month_start.isoformat(), month_start.isoformat()))
-
-        connection.commit()
-        connection.close()
+        conn.commit()
+        conn.close()
 
     def get_all_lists(self):
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
-        cursor.execute("""
-            SELECT DISTINCT list_name 
-            FROM tasks 
-            WHERE archived = 0 
-              AND LOWER(list_name) NOT IN (SELECT LOWER(name) FROM secret_lists)
-        """)
-        rows = cursor.fetchall()
-        connection.close()
-        return [row[0] for row in rows]
+        """
+        Liefert alle (öffentlichen) Listen‑Namen des aktuellen Users,
+        exklusive Spezial‑ und Secret-Listen.
+        """
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT DISTINCT list_name
+            FROM tasks
+            WHERE archived = 0
+              AND user_id = ?
+              AND list_name NOT IN ('Today','Next Day','This Week','This Month')
+              AND LOWER(list_name) NOT IN (
+                  SELECT LOWER(name)
+                  FROM secret_lists
+                  WHERE user_id = ?
+              )
+        """, (current_user.id, current_user.id))
+        rows = cur.fetchall()
+        conn.close()
+        return [r[0] for r in rows]
 
     def add_calendar_task(self, title, date, category):
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
-        cursor.execute("""
-            INSERT INTO calendar_tasks (title, date, category)
-            VALUES (?, ?, ?)
-        """, (title, date, category))
-        connection.commit()
-        connection.close()
+        """
+        Fügt eine Kalender‑Aufgabe für den aktuellen User hinzu.
+        """
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO calendar_tasks (title, date, category, user_id)
+            VALUES (?, ?, ?, ?)
+        """, (title, date, category, current_user.id))
+        conn.commit()
+        conn.close()
 
     def archive_list(self, list_name):
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
-        cursor.execute("UPDATE tasks SET archived = 1 WHERE list_name = ?", (list_name,))
-        connection.commit()
-        connection.close()
+        """
+        Archiviere eine Liste nur für den aktuellen User.
+        """
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE tasks
+            SET archived = 1
+            WHERE list_name = ? AND user_id = ?
+        """, (list_name, current_user.id))
+        conn.commit()
+        conn.close()
 
     def restore_list(self, list_name):
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
-        cursor.execute("UPDATE tasks SET archived = 0 WHERE list_name = ?", (list_name,))
-        connection.commit()
-        connection.close()
+        """
+        Hebt archived=0 nur für die Tasks des aktuellen Users auf.
+        """
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE tasks
+            SET archived = 0
+            WHERE list_name = ? AND user_id = ?
+        """, (list_name, current_user.id))
+        conn.commit()
+        conn.close()
 
     def get_archived_lists(self):
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
-        cursor.execute("SELECT DISTINCT list_name FROM tasks WHERE archived = 1")
-        rows = cursor.fetchall()
-        connection.close()
-        return [row[0] for row in rows]
+        """
+        Listet alle archivierten Listennamen des aktuellen Users.
+        """
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT DISTINCT list_name
+            FROM tasks
+            WHERE archived = 1
+              AND user_id = ?
+        """, (current_user.id,))
+        rows = cur.fetchall()
+        conn.close()
+        return [r[0] for r in rows]
 
     def task_exists_in_calendar(self, title, date, category):
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
-        cursor.execute("""
-            SELECT 1 FROM calendar_tasks WHERE title = ? AND date = ? AND category = ?
-        """, (title, date, category))
-        exists = cursor.fetchone() is not None
-        connection.close()
+        """
+        Prüft nur im Kalender des aktuellen Users.
+        """
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT 1
+            FROM calendar_tasks
+            WHERE title = ?
+              AND date = ?
+              AND category = ?
+              AND user_id = ?
+        """, (title, date, category, current_user.id))
+        exists = cur.fetchone() is not None
+        conn.close()
         return exists
 
     def get_calendar_tasks(self, year, month):
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
-
-        cursor.execute("""
+        """
+        Holt Kalender‑Aufgaben nur des aktuellen Users.
+        """
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
             SELECT id, title, date, category
             FROM calendar_tasks
-            WHERE strftime('%Y', date) = ? AND strftime('%m', date) = ?
-        """, (str(year), f"{month:02d}"))
-
-        tasks = cursor.fetchall()
-        column_names = tuple(column[0] for column in cursor.description)  # Stelle sicher, dass es ein Tupel ist!
-
-        connection.close()
-        return tasks, column_names
-
+            WHERE strftime('%Y', date) = ?
+              AND strftime('%m', date) = ?
+              AND user_id = ?
+        """, (str(year), f"{month:02d}", current_user.id))
+        tasks = cur.fetchall()
+        colnames = tuple(c[0] for c in cur.description)
+        conn.close()
+        return tasks, colnames
 
     # Aufgaben aus dem Kalender → in Today/Next Day verschieben
     def move_calendar_tasks_to_special_lists(self):
         """
-        Holt Aufgaben aus dem Kalender und verschiebt sie in die richtige Spezialliste.
-        - Heute fällige Aufgaben → Today
-        - Morgen fällige Aufgaben → Next Day
+        Verschiebt nur die calendar_tasks des aktuellen Users in Today/Next Day.
         """
-
         if not self.should_run_task_addition("calendar_tasks_added"):
-            print("📌 Calendar tasks already added today. Skipping...")
+            print("📌 Calendar tasks already added today. Skipping…")
             return
 
-        today = date.today()
-        tomorrow = today + timedelta(days=1)
+        today = date.today().isoformat()
+        tomorrow = (date.today() + timedelta(days=1)).isoformat()
 
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
+        conn = self.get_db_connection()
+        cur = conn.cursor()
 
-        # **Heute fällige Aufgaben → Today (Verhindert doppelte Einträge)**
-        cursor.execute("""
-            INSERT INTO tasks (title, description, list_name, due_date, completed)
-            SELECT title, '', 'Today', date, 0 FROM calendar_tasks
+        # Heute
+        cur.execute("""
+            INSERT INTO tasks (title, description, list_name, due_date, completed, user_id)
+            SELECT title, '', 'Today', date, 0, user_id
+            FROM calendar_tasks
             WHERE date = ?
-            AND NOT EXISTS (SELECT 1 FROM tasks WHERE title = calendar_tasks.title AND due_date = ?)
-        """, (today.isoformat(), today.isoformat()))
+              AND user_id = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM tasks
+                WHERE title = calendar_tasks.title
+                  AND due_date = ?
+                  AND user_id = ?
+              )
+        """, (today, current_user.id, today, current_user.id))
 
-        # **Morgen fällige Aufgaben → Next Day (Verhindert doppelte Einträge)**
-        cursor.execute("""
-            INSERT INTO tasks (title, description, list_name, due_date, completed)
-            SELECT title, '', 'Next Day', date, 0 FROM calendar_tasks
+        # Morgen
+        cur.execute("""
+            INSERT INTO tasks (title, description, list_name, due_date, completed, user_id)
+            SELECT title, '', 'Next Day', date, 0, user_id
+            FROM calendar_tasks
             WHERE date = ?
-            AND NOT EXISTS (SELECT 1 FROM tasks WHERE title = calendar_tasks.title AND due_date = ?)
-        """, (tomorrow.isoformat(), tomorrow.isoformat()))
+              AND user_id = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM tasks
+                WHERE title = calendar_tasks.title
+                  AND due_date = ?
+                  AND user_id = ?
+              )
+        """, (tomorrow, current_user.id, tomorrow, current_user.id))
 
-        connection.commit()
-        connection.close()
+        conn.commit()
+        conn.close()
 
     def get_calendar_tasks_with_recurring(self, year, month, include_recurring=False):
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
+        """
+        Holt recurring calendar_tasks nur des aktuellen Users.
+        """
+        conn = self.get_db_connection()
+        cur = conn.cursor()
 
-        # Normale Kalenderaufgaben
-        cursor.execute("""
+        cur.execute("""
             SELECT title, date, category
             FROM calendar_tasks
-            WHERE strftime('%Y', date) = ? AND strftime('%m', date) = ?
-        """, (str(year), f"{month:02d}"))
-        tasks = cursor.fetchall()
+            WHERE strftime('%Y', date) = ?
+              AND strftime('%m', date) = ?
+              AND user_id = ?
+        """, (str(year), f"{month:02d}", current_user.id))
+        tasks = cur.fetchall()
 
-        # Optionale Einbindung wiederkehrender Aufgaben
         if include_recurring:
-            cursor.execute("""
+            cur.execute("""
                 SELECT title, frequency, interval_value, start_date
                 FROM recurring_tasks
-            """)
-            recurring_tasks = cursor.fetchall()
+                WHERE user_id = ?
+            """, (current_user.id,))
+            recurring = cur.fetchall()
 
             import datetime
-            for title, frequency, interval_value, start_date in recurring_tasks:
-                if not start_date:  # Standardmäßig auf den Monatsbeginn setzen, falls kein Startdatum angegeben ist
-                    start_date = f"{year}-{month:02d}-01"
+            end_of_month = (datetime.date(year, month, 1) + datetime.timedelta(days=31)).replace(
+                day=1) - datetime.timedelta(days=1)
 
-                start_date = datetime.datetime.strptime(start_date, "%Y-%m-%d").date()
-                days_in_month = (datetime.date(year, month, 1) + datetime.timedelta(days=31)).replace(
-                    day=1) - datetime.timedelta(days=1)
+            for title, freq, interval, start in recurring:
+                start = start or f"{year}-{month:02d}-01"
+                d0 = datetime.datetime.strptime(start, "%Y-%m-%d").date()
 
-                if frequency == "daily":
-                    current_date = start_date
-                    while current_date <= days_in_month:
-                        tasks.append((title, current_date.isoformat(), "recurring-daily"))
-                        current_date += datetime.timedelta(days=interval_value or 1)
+                if freq == "daily":
+                    while d0 <= end_of_month:
+                        tasks.append((title, d0.isoformat(), "recurring-daily"))
+                        d0 += datetime.timedelta(days=interval or 1)
 
+                elif freq == "weekly":
+                    while d0 <= end_of_month:
+                        tasks.append((title, d0.isoformat(), "recurring-weekly"))
+                        d0 += datetime.timedelta(weeks=interval or 1)
 
-                elif frequency == "weekly":
+                elif freq == "monthly":
+                    while d0 <= end_of_month:
+                        tasks.append((title, d0.isoformat(), "recurring-monthly"))
+                        d0 = (d0.replace(day=1) + datetime.timedelta(days=31)).replace(day=1)
 
-                    current_date = start_date
-
-                    while current_date <= days_in_month:
-                        tasks.append((title, current_date.isoformat(), "recurring-weekly"))
-
-                        current_date += datetime.timedelta(weeks=interval_value or 1)
-
-
-                elif frequency == "monthly":
-
-                    current_date = start_date
-
-                    while current_date <= days_in_month:
-                        tasks.append((title, current_date.isoformat(), "recurring-monthly"))
-
-                        current_date += datetime.timedelta(days=(interval_value or 1) * 30)
-
-        connection.close()
+        conn.close()
         return tasks
 
     def get_tasks_for_date_range(self, start_date, end_date, completed=None, exclude_lists=None,
                                  exclude_date_range=None):
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
+        """
+        Sucht nur in tasks des aktuellen Users.
+        """
+        conn = self.get_db_connection()
+        cur = conn.cursor()
 
         query = """
             SELECT id, title, description, due_date, completed, list_name
             FROM tasks
             WHERE due_date BETWEEN ? AND ?
+              AND user_id = ?
         """
-        params = [start_date, end_date]
+        params = [start_date, end_date, current_user.id]
 
         if completed is not None:
             query += " AND completed = ?"
             params.append(int(completed))
 
         if exclude_lists:
-            placeholders = ", ".join(["?"] * len(exclude_lists))
-            query += f" AND list_name NOT IN ({placeholders})"
-            params.extend(exclude_lists)
+            ph = ", ".join("?" * len(exclude_lists))
+            query += f" AND list_name NOT IN ({ph})"
+            params += exclude_lists
 
         if exclude_date_range:
-            # exclude_date_range sollte ein Tupel (ex_start, ex_end) sein
             query += " AND NOT (due_date BETWEEN ? AND ?)"
-            params.extend([exclude_date_range[0], exclude_date_range[1]])
+            params += [exclude_date_range[0], exclude_date_range[1]]
 
         query += " ORDER BY due_date ASC"
-        cursor.execute(query, params)
-        tasks = cursor.fetchall()
-        connection.close()
-        return tasks
+        cur.execute(query, params)
+        rows = cur.fetchall()
+        conn.close()
+        return rows
 
     def get_next_day_tasks(self):
+        """
+        Holt alle Aufgaben für morgen für den aktuellen User.
+        """
         tomorrow = (date.today() + timedelta(days=1)).isoformat()
         return self.get_tasks_for_date_range(tomorrow, tomorrow)
 
     def get_week_tasks(self):
-        """Holt alle Aufgaben, die explizit für 'This Week' hinzugefügt wurden."""
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
-        cursor.execute("""
+        """
+        Holt alle Aufgaben der 'This Week'-Liste für den aktuellen User.
+        """
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
             SELECT id, title, description, due_date, completed
             FROM tasks
             WHERE list_name = 'This Week'
-        """)
-        tasks = cursor.fetchall()
-        connection.close()
-        return tasks
+              AND user_id = ?
+        """, (current_user.id,))
+        rows = cur.fetchall()
+        conn.close()
+        return rows
 
     def get_month_tasks(self):
-        """Holt alle Aufgaben, die explizit für 'This Month' hinzugefügt wurden."""
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
-        cursor.execute("""
+        """
+        Holt alle Aufgaben der 'This Month'-Liste für den aktuellen User.
+        """
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
             SELECT id, title, description, due_date, completed
             FROM tasks
             WHERE list_name = 'This Month'
-        """)
-        tasks = cursor.fetchall()
-        connection.close()
-        return tasks
+              AND user_id = ?
+        """, (current_user.id,))
+        rows = cur.fetchall()
+        conn.close()
+        return rows
 
     def toggle_task_completion(self, task_id, completed):
         """
-        Updates the completion status of a task.
+        Markiert eine Aufgabe als (un)vollständig – nur für den aktuellen User.
         """
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
-        cursor.execute("""
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
             UPDATE tasks
             SET completed = ?
-            WHERE id = ?
-        """, (int(completed), task_id))
-        connection.commit()
-        connection.close()
+            WHERE id = ? AND user_id = ?
+        """, (int(completed), task_id, current_user.id))
+        conn.commit()
+        conn.close()
 
     def delete_task(self, task_id):
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
-        cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-        connection.commit()
-        connection.close()
+        """
+        Löscht eine Aufgabe – nur wenn sie zum aktuellen User gehört.
+        """
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            DELETE FROM tasks
+            WHERE id = ? AND user_id = ?
+        """, (task_id, current_user.id))
+        conn.commit()
+        conn.close()
 
     def move_task(self, task_id, new_list):
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
-        cursor.execute("UPDATE tasks SET list_name = ? WHERE id = ?", (new_list, task_id))
-        connection.commit()
-        connection.close()
+        """
+        Verschiebt eine Aufgabe in eine andere Liste – nur für den aktuellen User.
+        """
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE tasks
+            SET list_name = ?
+            WHERE id = ? AND user_id = ?
+        """, (new_list, task_id, current_user.id))
+        conn.commit()
+        conn.close()
 
     def rename_task(self, task_id, new_name):
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
-        cursor.execute("UPDATE tasks SET title = ? WHERE id = ?", (new_name, task_id))
-        connection.commit()
-        connection.close()
+        """
+        Ändert den Titel einer Aufgabe – nur für den aktuellen User.
+        """
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE tasks
+            SET title = ?
+            WHERE id = ? AND user_id = ?
+        """, (new_name, task_id, current_user.id))
+        conn.commit()
+        conn.close()
 
     def update_task_date(self, task_id, new_date):
-        connection = self.get_db_connection()
-        cursor = connection.cursor()
-        cursor.execute("""
+        """
+        Ändert das Datum einer Kalender-Aufgabe – nur für den aktuellen User.
+        """
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
             UPDATE calendar_tasks
             SET date = ?
-            WHERE id = ?
-        """, (new_date, task_id))
-        connection.commit()
-        connection.close()
+            WHERE id = ? AND user_id = ?
+        """, (new_date, task_id, current_user.id))
+        conn.commit()
+        conn.close()
 
     def close(self):
         self.conn.close()

@@ -21,7 +21,7 @@
         <!-- Optional: Du kannst hier auch eine kurze Übersicht der Aufgaben anzeigen -->
         <form action="{{ url_for('restore_list', list_name=list.name) }}" method="POST"
               onsubmit="return confirm('Möchtest du die Liste wiederherstellen?');">
-          <button type="submit">Liste wiederherstellen</button>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">          <button type="submit">Liste wiederherstellen</button>
         </form>
       </div>
       {% endfor %}

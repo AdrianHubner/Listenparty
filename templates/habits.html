@@ -12,7 +12,7 @@
 
   <!-- Formular zum Aktualisieren eines Tages -->
   <form action="{{ url_for('habits.update_habit') }}" method="POST">
-    <label for="habit_date">Datum:</label>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">    <label for="habit_date">Datum:</label>
     <input type="date" id="habit_date" name="habit_date" required>
 
     <label>Alkohol trinken:</label>

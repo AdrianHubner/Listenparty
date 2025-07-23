@@ -1,11 +1,8 @@
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 
 from flask import Flask
-
-app = Flask(__name__)
-app.secret_key = 'dein_einzigartiger_geheimer_schluessel'  # Ersetze dies durch einen langen, zufälligen String
-
-
+from flask_wtf.csrf import CSRFProtect
+import sqlite3
 
 from list_manager import ListManager, Task
 from utils import get_daily_video
@@ -14,16 +11,67 @@ from datetime import date, timedelta
 from calendar import monthcalendar
 import datetime
 
+from auth import auth_bp
+from flask_login import LoginManager, login_required
+
 import os
 import random
+from user_model import User  # <— von hier holen wir User
+
+app = Flask(__name__)
+
+# Secret Key – in Produktion über Umgebungsvariable setzen!
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev‐fallback‐key')  # Session‑Cookie hart machen
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,   # kein JS-Zugriff
+    SESSION_COOKIE_SAMESITE="Lax",  # Schutz gegen CSRF
+    # SESSION_COOKIE_SECURE=True     # nur über HTTPS aktivieren!
+)
+
+app.config["SESSION_COOKIE_SECURE"] = True
+app.config["REMEMBER_COOKIE_SECURE"] = True  # falls du Flask‑Login nutzt
+
+
+# CSRF global aktivieren
+csrf = CSRFProtect(app)
+
+
+# 1) LoginManager hier erzeugen
+login_manager = LoginManager()
+login_manager.login_view = "auth.login"  # Dein Login‑Endpunkt
+login_manager.init_app(app)
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    # verwende User.get
+    return User.get(int(user_id))
+
+
+# … hier restliches Setup: register_blueprint(auth_bp), ListManager, Routes, etc. …
+from auth import auth_bp
+app.register_blueprint(auth_bp, url_prefix="/auth")
 
 # Datei für die Sprüche und den Fortschritt
 QUOTES_FILE = "quotes.txt"
 PROGRESS_FILE = "progress.txt"
 
-manager = ListManager()  # Instanziiere den ListManager
-#manager.move_calendar_tasks_to_special_lists()
-#manager.add_recurring_tasks_to_special_lists()
+manager = ListManager()  # Instafrom flask import Flask, render_template, request, redirect, url_for, jsonify
+
+from flask import Flask
+from flask_wtf.csrf import CSRFProtect
+
+from list_manager import ListManager, Task
+from utils import get_daily_video
+from datetime import date, timedelta
+
+from calendar import monthcalendar
+import datetime
+
+from auth import auth_bp
+
+import os
+import random
 
 
 from timeline import timeline_bp
@@ -38,7 +86,6 @@ app.register_blueprint(habits_bp, url_prefix="/habits")
 
 from secret_lists import secret_bp
 app.register_blueprint(secret_bp, url_prefix="/secret")
-
 
 
 
@@ -72,11 +119,9 @@ def get_random_quote():
 
     return quotes[next_index].strip()
 
-with app.app_context():
-    manager.move_calendar_tasks_to_special_lists()
-    manager.add_recurring_tasks_to_special_lists()
 
 @app.route("/daily_quote", methods=["GET"])
+@login_required
 def daily_quote():
     """
     Liefert einen zufälligen Motivationsspruch, ohne Wiederholung.
@@ -87,6 +132,7 @@ def daily_quote():
 
 
 @app.route("/add_task/<list_name>", methods=["POST"])
+@login_required
 def add_task(list_name):
     """
     Add a new task to the specified list.
@@ -106,6 +152,7 @@ def add_task(list_name):
 
 
 @app.route("/add_list", methods=["POST"])
+@login_required
 def add_list():
     """
     Create a new list by adding a dummy task with the list name.
@@ -119,6 +166,7 @@ def add_list():
 
 
 @app.route("/add_task_to_today", methods=["POST"])
+@login_required
 def add_task_to_today():
     """
     Fügt eine Aufgabe zur "Heute"-Liste hinzu.
@@ -144,6 +192,7 @@ def add_task_to_today():
 
 # Route für die 'Next Day' Liste
 @app.route("/add_task_to_next_day", methods=["POST"])
+@login_required
 def add_task_to_next_day():
     title = request.form.get("title")
     description = request.form.get("description", "")
@@ -155,6 +204,7 @@ def add_task_to_next_day():
 
 # Route für die 'This Week' Liste
 @app.route("/add_task_to_this_week", methods=["POST"])
+@login_required
 def add_task_to_this_week():
     title = request.form.get("title")
     description = request.form.get("description", "")
@@ -172,6 +222,7 @@ def add_task_to_this_week():
 
 # Route für die 'This Month' Liste
 @app.route("/add_task_to_this_month", methods=["POST"])
+@login_required
 def add_task_to_this_month():
     title = request.form.get("title")
     description = request.form.get("description", "")
@@ -182,17 +233,20 @@ def add_task_to_this_month():
     return redirect(url_for("index"))
 
 @app.route("/archive_list/<list_name>", methods=["POST"])
+@login_required
 def archive_list(list_name):
     manager.archive_list(list_name)
     return redirect(url_for("index"))
 
 
 @app.route("/restore_list/<list_name>", methods=["POST"])
+@login_required
 def restore_list(list_name):
     manager.restore_list(list_name)
     return redirect(url_for("index"))
 
 @app.route("/archived_lists")
+@login_required
 def archived_lists():
     archived = manager.get_archived_lists()  # Muss alle archivierten Listennamen zurückgeben
     archived_lists_with_data = [
@@ -207,6 +261,7 @@ def archived_lists():
 
 
 @app.route("/view_list/<list_name>")
+@login_required
 def view_list(list_name):
     tasks = manager.get_tasks(list_name)
     return render_template("view_lists.html", list_name=list_name, tasks=tasks)
@@ -215,6 +270,7 @@ def view_list(list_name):
 
 
 @app.route("/")
+@login_required
 def index():
     """
     Fetches all lists, including special lists (Today, Next Day, This Week, and This Month).
@@ -370,6 +426,7 @@ def index():
     )
 
 @app.route("/special_lists")
+@login_required
 def special_lists():
     today = date.today()
     tomorrow = today + timedelta(days=1)
@@ -405,6 +462,7 @@ def special_lists():
 
 
 @app.route("/toggle_task/<int:task_id>", methods=["POST"])
+@login_required
 def toggle_task(task_id):
     """
     Toggle the completion status of a task.
@@ -418,6 +476,7 @@ def toggle_task(task_id):
 
 
 @app.route("/update_color/<list_name>", methods=["POST"])
+@login_required
 def update_color(list_name):
     """
     Updates the background color of a list.
@@ -428,6 +487,7 @@ def update_color(list_name):
 
 
 @app.route("/daily_video")
+@login_required
 def daily_video():
     video_url = get_daily_video()
     if not video_url:
@@ -435,12 +495,14 @@ def daily_video():
     return render_template("daily_video.html", video_url=video_url)
 
 @app.route("/delete_task/<int:task_id>", methods=["POST"])
+@login_required
 def delete_task(task_id):
     manager.delete_task(task_id)
     return "OK", 200
 
 
 @app.route("/calendar")
+@login_required
 def calendar():
     # Versuche, Jahr und Monat aus den Query-Parametern zu lesen.
     year_arg = request.args.get("year")
@@ -478,6 +540,7 @@ def calendar():
 
 
 @app.route("/update_task_date/<int:task_id>", methods=["POST"])
+@login_required
 def update_task_date(task_id):
     new_date = request.json.get("newDate")
     manager.update_task_date(task_id, new_date)
@@ -486,6 +549,7 @@ def update_task_date(task_id):
 
 
 @app.route("/move_calendar_tasks", methods=["GET"])
+@login_required
 def move_calendar_tasks():
     manager.move_calendar_tasks_to_special_lists()  # Neue Methode
     return "Tasks for today moved to their special lists!", 200
@@ -496,6 +560,7 @@ def move_calendar_tasks():
 
 
 @app.route("/move_task/<int:task_id>", methods=["POST"])
+@login_required
 def move_task(task_id):
     data = request.json
     new_list = data.get("newList")
@@ -504,6 +569,7 @@ def move_task(task_id):
 
 
 @app.route("/add_calendar_task", methods=["POST"])
+@login_required
 def add_calendar_task():
     title = request.form.get("title")
     date = request.form.get("date")
@@ -528,6 +594,7 @@ def add_calendar_task():
     return redirect(url_for("calendar"))
 
 @app.route("/calendar/<int:year>/<int:month>")
+@login_required
 def get_calendar_for_month(year, month):
     from calendar import monthcalendar
 
@@ -548,6 +615,7 @@ def get_calendar_for_month(year, month):
 
 
 @app.route("/add_recurring_task", methods=["POST"])
+@login_required
 def add_recurring_task():
     title = request.form.get("title")
     frequency = request.form.get("frequency")
@@ -566,6 +634,7 @@ def add_recurring_task():
 
 
 @app.route("/daily_task_migration", methods=["GET"])
+@login_required
 def daily_task_migration():
     today = date.today().isoformat()
     tomorrow = (date.today() + timedelta(days=1)).isoformat()
@@ -578,16 +647,20 @@ def daily_task_migration():
 
 
 @app.route("/update_tasks", methods=["GET"])
+@login_required
 def update_tasks():
     """
-    Führt die Funktionen aus, die Aufgaben aus dem Kalender und wiederkehrende Aufgaben in Speziallisten einsortieren.
+    Führt die Funktionen aus, die Aufgaben aus dem Kalender und
+    wiederkehrende Aufgaben in Speziallisten einsortieren.
     """
     manager.move_calendar_tasks_to_special_lists()
     manager.add_recurring_tasks_to_special_lists()
     return "Tasks updated successfully!", 200
 
 
+
 @app.route("/rename_task/<int:task_id>", methods=["POST"])
+@login_required
 def rename_task(task_id):
     data = request.json
     new_name = data.get("newName")
@@ -595,6 +668,7 @@ def rename_task(task_id):
     return "OK", 200
 
 @app.route("/update_task_order", methods=["POST"])
+@login_required
 def update_task_order():
     data = request.json
     new_order = data.get("order", [])
