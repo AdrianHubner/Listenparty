@@ -57,30 +57,31 @@ def select_task(manager, list_name):
 
 # Task class to represent each task
 class Task:
-    def __init__(self, title, description=None, due_date=None, difficulty=None, tags=None, completed=False):
-        """
-        Repräsentiert eine Aufgabe (Task).
+    def __init__(self, title, description=None, due_date=None, difficulty=None, tags=None, completed=False, parent=None):
+        self.title = title
+        self.description = description or ""
+        self.due_date = due_date
+        self.difficulty = difficulty
+        self.tags = tags or []
+        self.completed = completed
 
-        :param title: Der Titel der Aufgabe (Pflichtfeld).
-        :param description: Eine optionale Beschreibung der Aufgabe.
-        :param due_date: Das optionale Fälligkeitsdatum (im Format YYYY-MM-DD).
-        :param difficulty: Die optionale Schwierigkeit der Aufgabe (z. B. "leicht", "mittel", "schwer").
-        :param tags: Eine optionale Liste von Schlagwörtern (Tags) für die Aufgabe.
-        :param completed: Ob die Aufgabe abgeschlossen ist (bool).
-        """
-        self.title = title  # Titel der Aufgabe
-        self.description = description or ""  # Standardwert: leerer String
-        self.due_date = due_date  # Kann leer bleiben
-        self.difficulty = difficulty  # Kann leer bleiben
-        self.tags = tags or []  # Standardwert: leere Liste
-        self.completed = completed  # Standardwert: False (nicht abgeschlossen)
+        # Neu: Unteraufgaben / Parent Task
+        self.parent = parent  # None, wenn Hauptaufgabe
+        self.children = []    # Liste von Unteraufgaben
 
     def __repr__(self):
-        """
-        Liefert eine stringbasierte Darstellung der Aufgabe für Debugging oder Übersicht.
-        """
         return (f"Task(title='{self.title}', description='{self.description}', due_date='{self.due_date}', "
-                f"difficulty='{self.difficulty}', tags={self.tags}, completed={self.completed})")
+                f"difficulty='{self.difficulty}', tags={self.tags}, completed={self.completed}, "
+                f"parent={self.parent.title if self.parent else None}, "
+                f"children={len(self.children)})")
+
+
+class TaskList:
+    def __init__(self, name):
+        self.name = name
+        self.tasks = []  # Hauptaufgaben
+
+
 
 # ListManager class to handle lists and tasks
 class ListManager:
@@ -123,7 +124,6 @@ class ListManager:
         connection.close()
 
     def _create_tables(self):
-        # Create tasks table if not exists
         self.cursor.execute("""
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -131,60 +131,171 @@ class ListManager:
             title TEXT,
             description TEXT,
             due_date TEXT,
-            completed INTEGER
+            completed INTEGER,
+            estimated_time INTEGER,
+            user_id INTEGER,
+            archived INTEGER DEFAULT 0,
+            parent_id INTEGER,
+            position INTEGER DEFAULT 0
         )
         """)
         self.conn.commit()
 
-    def add_task(self, list_name, title, description="", due_date=None, estimated_time=0):
+    def add_list(self, list_name):
+        new_list = TaskList(list_name)
+        self.lists.append(new_list)
+        return new_list
+
+    def get_list(self, list_name):
         """
-        Add a new task to the database, tagged with dem aktuellen User.
+        Gibt alle Tasks dieser Liste zurück (inklusive Baumstruktur für Unteraufgaben)
         """
+        tasks = self.get_tasks(list_name)  # ruft schon build_task_tree auf
+        return tasks  # liefert dict mit "incomplete" und "completed"
+
+    # list_manager.py
+    def add_task(self, list_name, title, description="", due_date=None,
+                 estimated_time=0, parent_id=None, user_id=None):
+        """
+        Add a new task to the database, tagged with user_id.
+        """
+        if user_id is None:
+            raise ValueError("user_id must be provided when adding a task.")
+
         connection = self.get_db_connection()
         cursor = connection.cursor()
         cursor.execute("""
-               INSERT INTO tasks
-                 (list_name, title, description, due_date, estimated_time, completed, user_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?)
-           """, (
+            INSERT INTO tasks
+              (list_name, title, description, due_date,
+               estimated_time, completed, user_id, parent_id, position)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
             list_name,
             title,
             description,
             due_date,
             estimated_time,
             0,
-            current_user.id
+            user_id,
+            parent_id,
+            0
         ))
         connection.commit()
         connection.close()
 
+    def build_task_tree(self, tasks):
+        """
+        Baut aus einer flachen Liste von Tasks eine verschachtelte Baumstruktur.
+        Nur uncompleted Tasks.
+
+        tasks: Liste von dicts aus SQLite (mit id, parent_id, position)
+        """
+        # 1. Index nach ID für schnelles Nachschlagen
+        task_dict = {task['id']: {**task, 'children': []} for task in tasks}
+
+        # 2. Liste für Wurzel-Tasks
+        tree = []
+
+        # 3. Tasks zuordnen
+        for task in tasks:
+            task_id = task['id']
+            parent_id = task['parent_id']
+
+            if parent_id is None:
+                # Wurzel-Task
+                tree.append(task_dict[task_id])
+            else:
+                # Untertask → an parent's children anhängen
+                parent_task = task_dict.get(parent_id)
+                if parent_task:
+                    parent_task['children'].append(task_dict[task_id])
+                else:
+                    # Falls Parent fehlt (evtl. DB-Inkonsistenz), trotzdem als Wurzel
+                    tree.append(task_dict[task_id])
+
+        # 4. Optional: Kinder nach position sortieren
+        def sort_children(task):
+            task['children'].sort(key=lambda x: x['position'])
+            for child in task['children']:
+                sort_children(child)
+
+        for t in tree:
+            sort_children(t)
+
+        return tree
+
+    def get_task_by_id(self, task_id):
+        # Suche in allen Hauptaufgaben
+        for task in self.tasks:
+            found = self._find_task_recursive(task, task_id)
+            if found:
+                return found
+        return None
+
+    def _find_task_recursive(self, task, task_id):
+        if str(task.id) == str(task_id):
+            return task
+        for child in task.children:
+            found = self._find_task_recursive(child, task_id)
+            if found:
+                return found
+        return None
+
     def get_tasks(self, list_name):
-        """
-        Fetches tasks for eine Liste und den aktuellen User, gruppiert nach Status.
-        """
         connection = self.get_db_connection()
         cursor = connection.cursor()
 
-        # Unvollständige
+        # Uncompleted Tasks
         cursor.execute("""
-               SELECT id, title, description, due_date, completed
-               FROM tasks
-               WHERE list_name = ? AND completed = 0 AND user_id = ?
-               ORDER BY id DESC
-           """, (list_name, current_user.id))
-        incomplete_tasks = cursor.fetchall()
+            SELECT id, title, description, due_date, completed, parent_id, position
+            FROM tasks
+            WHERE list_name = ? AND completed = 0 AND user_id = ?
+        """, (list_name, current_user.id))
+        rows = cursor.fetchall()
+        #print("Rows from DB (incomplete):", rows)  # <--- Debug
 
-        # Abgeschlossene
+        # Dicts erzeugen
+        incomplete_tasks = [
+            {
+                "id": r[0],
+                "title": r[1],
+                "description": r[2],
+                "due_date": r[3],
+                "completed": r[4],
+                "parent_id": r[5],
+                "position": r[6],
+                "children": []
+            } for r in rows
+        ]
+        #print("Incomplete tasks dicts:", incomplete_tasks)  # <--- Debug
+
+        # Baum bauen
+        incomplete_tree = self.build_task_tree(incomplete_tasks)
+        #print("Incomplete tree:", incomplete_tree)  # <--- Debug
+
+        # Completed Tasks flach lassen
         cursor.execute("""
-               SELECT id, title, description, due_date, completed
-               FROM tasks
-               WHERE list_name = ? AND completed = 1 AND user_id = ?
-           """, (list_name, current_user.id))
-        completed_tasks = cursor.fetchall()
+            SELECT id, title, description, due_date, completed
+            FROM tasks
+            WHERE list_name = ? AND completed = 1 AND user_id = ?
+            ORDER BY position
+        """, (list_name, current_user.id))
+        completed_rows = cursor.fetchall()
+        completed_tasks = [
+            {
+                "id": r[0],
+                "title": r[1],
+                "description": r[2],
+                "due_date": r[3],
+                "completed": r[4]
+            } for r in completed_rows
+        ]
+        #print("Completed tasks:", completed_tasks)  # <--- Debug
 
         connection.close()
+
         return {
-            "incomplete": incomplete_tasks,
+            "incomplete": incomplete_tree,
             "completed": completed_tasks
         }
 
@@ -224,17 +335,41 @@ class ListManager:
         conn.commit()
         conn.close()
 
-    def update_task_order(self, new_order):
+    def update_task_order(self, tasks, new_list_name=None):
+        """
+        tasks = [{"id": 1, "parent_id": None, "position": 0}, ...]
+        new_list_name = optional: wenn Task in andere Liste verschoben wurde
+        """
         connection = self.get_db_connection()
         cursor = connection.cursor()
 
-        for index, task_id in enumerate(new_order):
-            cursor.execute(
-                "UPDATE tasks SET position = ? WHERE id = ? AND user_id = ?",
-                (index, task_id, current_user.id)
-            )
+        for task in tasks:
+            print("DEBUG updating task:", task, "new_list_name:", new_list_name)
 
-        connection.commit()
+            # Tabelle auswählen
+            if new_list_name in ["Today", "Next Day", "This Week", "This Month"]:
+                table = "special_list_tasks"
+            else:
+                table = "tasks"
+
+            if table == "special_list_tasks":
+                cursor.execute(f"""
+                    UPDATE {table}
+                    SET position = ?, parent_id = ?
+                    WHERE id = ? AND user_id = ?
+                """, (task['position'], task['parent_id'], task['id'], current_user.id))
+            else:
+                cursor.execute(f"""
+                    UPDATE {table}
+                    SET position = ?, parent_id = ?, list_name = ?
+                    WHERE id = ? AND user_id = ?
+                """, (task['position'], task['parent_id'], new_list_name, task['id'], current_user.id))
+
+            connection.commit()
+
+            cursor.execute(f"SELECT id, list_name, parent_id, position FROM {table} WHERE id=?", (task['id'],))
+            print("DEBUG db after update:", cursor.fetchone())
+
         connection.close()
 
     def add_recurring_task(self, title, frequency, start_date, interval_value=1):
@@ -491,6 +626,27 @@ class ListManager:
         colnames = tuple(c[0] for c in cur.description)
         conn.close()
         return tasks, colnames
+
+    def get_special_list_tasks(self, special_list_name):
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, title, description, due_date, estimated_time, completed
+            FROM special_list_tasks
+            WHERE special_list_name = ? AND user_id = ?
+            ORDER BY position
+        """, (special_list_name, current_user.id))
+        rows = cur.fetchall()
+        conn.close()
+
+        # Aufgaben nach Status trennen
+        tasks = {"incomplete": [], "completed": []}
+        for row in rows:
+            if row[5]:  # completed
+                tasks["completed"].append(row)
+            else:
+                tasks["incomplete"].append(row)
+        return tasks
 
     # Aufgaben aus dem Kalender → in Today/Next Day verschieben
     def move_calendar_tasks_to_special_lists(self):

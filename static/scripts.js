@@ -1,173 +1,305 @@
 document.addEventListener("DOMContentLoaded", function () {
-    // Checkbox-Handling
     const contextMenu = document.getElementById("context-menu");
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
-    if (contextMenu) {
-        // Zeige das Menü beim Rechtsklick
-        document.querySelectorAll("li").forEach(function (task) {
-            task.addEventListener("contextmenu", function (event) {
-                console.log("Rechtsklick auf Task:", task.dataset.taskId); // Debug-Ausgabe
-                event.preventDefault(); // Standard-Rechtsklick-Menü verhindern
+    let draggedItem = null; // Das Element, das gerade gezogen wird
 
-                contextMenu.style.top = `${event.clientY}px`;
-                contextMenu.style.left = `${event.clientX}px`;
-                contextMenu.style.display = "block";
+    // =======================
+    // Kontextmenü
+    // =======================
+    document.body.addEventListener("contextmenu", function (event) {
+        const task = event.target.closest("li[data-task-id]");
+        if (!task) return;
 
-                contextMenu.dataset.taskId = task.dataset.taskId; // Task-ID speichern
+        event.preventDefault();
+        if (contextMenu) {
+            contextMenu.style.top = `${event.pageY}px`;
+            contextMenu.style.left = `${event.pageX}px`;
+
+            contextMenu.style.display = "block";
+            contextMenu.dataset.taskId = task.dataset.taskId;
+        }
+    });
+
+   // Kontextmenü Aktionen
+
+    let popup = null; // global scope
+
+    contextMenu.addEventListener("click", function(event) {
+        const action = event.target.dataset.action;
+        const taskId = contextMenu.dataset.taskId;
+        if (!action || !taskId) return;
+
+           // ✅ Menü sofort schließen
+        contextMenu.style.display = "none";
+
+
+        //const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+
+        if (action === "delete") {
+            fetch(`/delete_task/${taskId}`, {
+                method: "POST",
+                headers: { "X-CSRFToken": csrfToken }
+            })
+            .then(res => {
+                if (res.ok) {
+                    const taskItem = document.querySelector(`li[data-task-id='${taskId}']`);
+                    if (taskItem) taskItem.remove();
+                } else alert("Could not delete task.");
             });
-        });
 
-        // Menü schließen, wenn woanders geklickt wird
-        document.addEventListener("click", function () {
-            contextMenu.style.display = "none";
-        });
-    } else {
-        console.warn("⚠️ `context-menu` nicht gefunden. Wird auf dieser Seite nicht benötigt.");
-    }
+        } else if (action === "rename") {
+            const newName = prompt("Enter new task name:");
+            if (!newName) return;
 
-
-    document.querySelectorAll("input[type='checkbox']").forEach(function (checkbox) {
-        checkbox.addEventListener("change", function () {
-            const taskItem = this.closest("li"); // Suche das übergeordnete <li>-Element
-            const taskId = taskItem.dataset.taskId; // Hole die Task-ID vom <li>
-
-            console.log(`Checkbox clicked: Task ID=${taskId}, Completed=${this.checked}`); // Debug-Ausgabe
-
-            // Dynamische Container basierend auf `list.name`
-            const parentCard = this.closest(".card");
-            const listName = parentCard.dataset.listName || parentCard.querySelector("h2").textContent.trim();
-            //const listName = parentCard ? parentCard.querySelector("h2").textContent.trim() : null;
-            const incompleteTasksContainer = document.querySelector(`#incomplete-tasks-${listName}`);
-            const completedTasksContainer = document.querySelector(`#completed-tasks-${listName}`);
-
-            fetch(`/toggle_task/${taskId}`, {
+            fetch(`/rename_task/${taskId}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken
                 },
-                body: JSON.stringify({ completed: this.checked }),
-            })
-                .then((response) => {
-                    if (response.ok) {
-                        if (this.checked) {
-                            completedTasksContainer.appendChild(taskItem);
-                            taskItem.style.textDecoration = "line-through";
-                            taskItem.style.color = "gray";
-                        } else {
-                            incompleteTasksContainer.appendChild(taskItem);
-                            taskItem.style.textDecoration = "none";
-                            taskItem.style.color = "black";
-                        }
-                    } else {
-                        alert("Error: Could not update task status.");
-                    }
-                })
-                .catch((error) => console.error("Error:", error));
-        });
+                body: JSON.stringify({ newName })
+            }).then(res => {
+                if (res.ok) {
+                    const taskItem = document.querySelector(`li[data-task-id='${taskId}']`);
+                    if (taskItem) taskItem.querySelector("strong").textContent = newName;
+                } else alert("Could not rename task.");
+            });
+
+        } else if (action === "move") {
+            // 1️⃣ Listen sammeln
+            const listElements = document.querySelectorAll(".card[data-list-name]");
+            const lists = Array.from(listElements).map(card => card.dataset.listName);
+
+            // 2️⃣ Popup erstellen
+            if (popup) popup.remove(); // vorheriges Popup entfernen
+            popup = document.createElement("div");
+            popup.style.position = "absolute";
+            popup.style.top = `${event.clientY}px`;
+            popup.style.left = `${event.clientX}px`;
+            popup.style.backgroundColor = "#fff";
+            popup.style.border = "1px solid #ccc";
+            popup.style.padding = "5px";
+            popup.style.borderRadius = "5px";
+            popup.style.zIndex = 10000;
+            popup.style.boxShadow = "0 2px 6px rgba(0,0,0,0.2)";
+
+            const select = document.createElement("select");
+            lists.forEach(listName => {
+                const option = document.createElement("option");
+                option.value = listName;
+                option.textContent = listName;
+                select.appendChild(option);
+            });
+            popup.appendChild(select);
+
+            const confirmBtn = document.createElement("button");
+            confirmBtn.type = "button";
+            confirmBtn.textContent = "Move";
+            confirmBtn.style.marginLeft = "5px";
+            popup.appendChild(confirmBtn);
+
+            document.body.appendChild(popup);
+            select.focus();
+
+            // ❌ Verhindert, dass Popup durch globale Listener sofort verschwindet
+            popup.addEventListener("click", e => e.stopPropagation());
+
+            // Move ausführen
+            confirmBtn.addEventListener("click", e => {
+                e.stopPropagation();
+                const newList = select.value;
+                if (!newList) return;
+
+                fetch(`/move_task/${taskId}`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": csrfToken
+                    },
+                    body: JSON.stringify({ newList })
+                }).then(res => {
+                    if (res.ok) {
+                        const taskItem = document.querySelector(`li[data-task-id='${taskId}']`);
+                        if (taskItem) taskItem.remove();
+                    } else alert("Could not move task.");
+                }).finally(() => {
+                    popup.remove();
+                    popup = null;
+                    contextMenu.style.display = "none";
+                });
+            });
+        }
     });
-        // Event-Listener für Vollbildmodus-Button
-        document.querySelectorAll(".fullscreen-btn").forEach(function (button) {
-            button.addEventListener("click", function () {
-                const listName = this.dataset.listName;
-                const card = this.closest(".card");
 
-                console.log(`Fullscreen für Liste: ${listName}`); // Debug-Ausgabe
+    // globaler Click Listener zum Schließen
+    document.addEventListener("click", function(e) {
+        if (contextMenu && !contextMenu.contains(e.target)) {
+            contextMenu.style.display = "none";
+        }
+        if (popup && !popup.contains(e.target)) {
+            popup.remove();
+            popup = null;
+        }
+    });
 
-                // Entferne vorherige Vollbildmodi
-                document.querySelectorAll(".card").forEach(function (otherCard) {
-                    otherCard.classList.remove("expanded");
-                    otherCard.style.pointerEvents = "auto";
-                });
 
-                // Aktiviere Vollbildmodus
-                card.classList.add("expanded");
+
+    // =======================
+    // Fullscreen
+    // =======================
+    document.body.addEventListener("click", function (event) {
+        if (event.target.classList.contains("fullscreen-btn")) {
+            const button = event.target;
+            const card = button.closest(".card");
+            document.querySelectorAll(".card").forEach(c => {
+                c.classList.remove("expanded");
+                c.style.pointerEvents = "auto";
             });
-        });
-
-        // Schließen des Vollbildmodus bei Klick außerhalb
-        document.body.addEventListener("click", function (event) {
-            if (!event.target.closest(".card.expanded") && !event.target.classList.contains("fullscreen-btn")) {
-                console.log("Klick außerhalb, Vollbildmodus schließen.");
-                document.querySelectorAll(".card").forEach(function (otherCard) {
-                    otherCard.classList.remove("expanded");
-                    otherCard.style.pointerEvents = "auto";
-                });
-            }
-        });
-
-       let draggedItem = null; // Das Element, das gezogen wird
-
-        // Event-Listener für alle Aufgaben
-        document.querySelectorAll("li").forEach(function (task) {
-            // Wenn Drag gestartet wird
-            task.addEventListener("dragstart", function (event) {
-                draggedItem = this; // Speichere das gezogene Element
-                console.log(`Dragging Task ID: ${this.dataset.taskId}`);
-                event.dataTransfer.effectAllowed = "move";
+            card.classList.add("expanded");
+        } else if (!event.target.closest(".card.expanded")) {
+            document.querySelectorAll(".card").forEach(c => {
+                c.classList.remove("expanded");
+                c.style.pointerEvents = "auto";
             });
+        }
+    });
 
-            // Wenn Drag endet
-            task.addEventListener("dragend", function () {
-                draggedItem = null;
-            });
+    // =======================
+    // Checkbox Handling
+    // =======================
+    document.body.addEventListener("change", function (event) {
+        const checkbox = event.target;
+        if (!checkbox.matches("input[type='checkbox']")) return;
 
-            // Wenn ein Element über ein anderes gezogen wird
-            task.addEventListener("dragover", function (event) {
-                event.preventDefault(); // Erlaubt das Droppen
-            });
+        const taskItem = checkbox.closest("li[data-task-id]");
+        if (!taskItem) return;
+
+        const taskId = taskItem.dataset.taskId;
+        const parentCard = taskItem.closest(".card");
+        const listName = parentCard.dataset.listName || parentCard.querySelector("h2").textContent.trim();
+        const incompleteTasksContainer = document.querySelector(`#incomplete-tasks-${listName}`);
+        const completedTasksContainer = document.querySelector(`#completed-tasks-${listName}`);
 
 
 
-            // Wenn ein Element fallen gelassen wird
-            task.addEventListener("drop", function (event) {
-                event.preventDefault();
-                this.style.border = "none"; // Visuellen Hinweis entfernen
 
-                if (draggedItem !== this) {
-                    const parent = this.parentNode;
-                    const bounding = this.getBoundingClientRect();
-                    const offset = event.clientY - bounding.top; // Position des Mauszeigers relativ zur Aufgabe
+        fetch(`/toggle_task/${taskId}`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": document.querySelector('input[name="csrf_token"]').value
+            },
+            body: JSON.stringify({
+                completed: checkbox.checked
+            }),
+        })
 
-                    if (offset > bounding.height / 2) {
-                        // Wenn der Mauszeiger in der unteren Hälfte ist, füge nach der aktuellen Aufgabe ein
-                        parent.insertBefore(draggedItem, this.nextSibling);
-                    } else {
-                        // Wenn der Mauszeiger in der oberen Hälfte ist, füge vor der aktuellen Aufgabe ein
-                        parent.insertBefore(draggedItem, this);
-                    }
-
-                    // Neue Reihenfolge ermitteln
-                    const updatedOrder = Array.from(parent.children).map(item => item.dataset.taskId);
-                    console.log("New Order:", updatedOrder);
-
-                    // Neue Reihenfolge ans Backend senden
-                    fetch(`/update_task_order`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ order: updatedOrder }),
-                    }).then(response => {
-                        if (response.ok) {
-                            console.log("Order updated successfully!");
-                        } else {
-                            console.error("Failed to update order.");
-                        }
-                    });
+        .then(response => {
+            if (response.ok) {
+                if (checkbox.checked) {
+                    completedTasksContainer.appendChild(taskItem);
+                    taskItem.style.textDecoration = "line-through";
+                    taskItem.style.color = "gray";
+                } else {
+                    incompleteTasksContainer.appendChild(taskItem);
+                    taskItem.style.textDecoration = "none";
+                    taskItem.style.color = "black";
                 }
-            });
+            } else {
+                alert("Error: Could not update task status.");
+            }
+        })
+        .catch(error => console.error("Error:", error));
+    });
 
+    // =======================
+    // Drag & Drop (inkl. Unteraufgaben)
+    // =======================
+    document.body.addEventListener("dragstart", function (event) {
+        const task = event.target.closest("li[data-task-id]");
+        if (!task) return;
+        draggedItem = task;
+        event.dataTransfer.effectAllowed = "move";
+    });
+
+    document.body.addEventListener("dragend", function () {
+        draggedItem = null;
+    });
+
+    document.body.addEventListener("dragover", function(event) {
+        const listContainer = event.target.closest("ul[id^='incomplete-tasks-'], ul[id^='completed-tasks-']");
+        if (listContainer) event.preventDefault();
+    });
+
+
+
+
+
+    document.body.addEventListener("drop", function (event) {
+        // Task, auf den gedroppt wird
+        const targetTask = event.target.closest("li[data-task-id]");
+        // UL, auf die gedroppt wird (incomplete oder completed)
+        const listContainer = event.target.closest("ul[id^='incomplete-tasks-'], ul[id^='completed-tasks-']");
+
+        if (!draggedItem || (!targetTask && !listContainer)) return;
+        event.preventDefault();
+
+        // Falls direkt auf eine Task gedroppt, setzen wir die UL
+        const parentUL = listContainer || (targetTask ? targetTask.parentNode : null);
+        if (!parentUL) return;
+
+        // Task einfügen
+        if (targetTask && targetTask.parentNode === parentUL) {
+            const bounding = targetTask.getBoundingClientRect();
+            const offset = event.clientY - bounding.top;
+            if (offset > bounding.height / 2) {
+                parentUL.insertBefore(draggedItem, targetTask.nextSibling);
+            } else {
+                parentUL.insertBefore(draggedItem, targetTask);
+            }
+        } else {
+            // Direkt auf leere Liste drop
+            parentUL.appendChild(draggedItem);
+        }
+
+        // parentId bestimmen (für Unteraufgaben!)
+        const parentLI = parentUL.closest("li[data-task-id]");
+        const parentId = parentLI ? parentLI.dataset.taskId : null;
+
+        // Neue ListName bestimmen (wichtig für Special Lists)
+        const newListName = parentUL.closest(".card")?.dataset.listName;
+
+        // Reihenfolge korrekt bauen
+        const order = Array.from(parentUL.children).map(li => li.dataset.taskId);
+        console.log("DEBUG sending order:", order, "parentId:", parentId, "listName:", newListName);
+        console.log("Dragged Item:", draggedItem);
+        console.log("Target UL:", parentUL);
+        console.log("Order to send:", order);
+        console.log("Parent ID:", parentId);
+        console.log("List Name:", newListName);
+
+        fetch("/update_task_order", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken  // ✅ hier Token mitschicken
+            },
+            credentials: "same-origin",  // wichtig für Cookies
+            body: JSON.stringify({
+                order: order,
+                parentId: parentId,
+                listName: newListName
+            })
+        })
+        .then(res => {
+            console.log("Fetch response:", res.status, res.statusText);
+            if (!res.ok) console.error("❌ Order update failed");
         });
 
 
-
-    // Menü schließen, wenn man woanders klickt
-    document.addEventListener("click", function () {
-        console.log("Kontextmenü geschlossen."); // Debug-Ausgabe
-        contextMenu.style.display = "none";
-    });
-
-    // Menü schließen, wenn man woanders klickt
-    document.addEventListener("click", function () {
-        contextMenu.style.display = "none";
+        draggedItem = null;
+        console.log("Order:", order, "Parent:", parentId, "List:", newListName);
     });
 
 

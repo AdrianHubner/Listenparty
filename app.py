@@ -12,7 +12,7 @@ from calendar import monthcalendar
 import datetime
 
 from auth import auth_bp
-from flask_login import LoginManager, login_required
+from flask_login import LoginManager, login_required, current_user
 
 import os
 import random
@@ -130,25 +130,70 @@ def daily_quote():
     return quote
 
 
+from flask_login import current_user  # ganz oben importieren
+
 
 @app.route("/add_task/<list_name>", methods=["POST"])
 @login_required
 def add_task(list_name):
-    """
-    Add a new task to the specified list.
-    """
-    # Get form data
     title = request.form.get("title")
     description = request.form.get("description", "")
-    due_date = request.form.get("due_date", None)
+    estimated_time = request.form.get("estimated_time")
+    parent_task_id = request.form.get("parent_task_id")
 
-    print(f"Adding task '{title}' to list '{list_name}'")  # Debugging
+    # estimated_time sicher konvertieren
+    if estimated_time:
+        estimated_time = int(estimated_time)
+    else:
+        estimated_time = 30
 
-    # Add the task using the ListManager
-    manager.add_task(list_name, title, description, due_date)
+    # parent_id sicher konvertieren
+    parent_id = int(parent_task_id) if parent_task_id else None
 
-    # Redirect back to the homepage
+    # Fälligkeitsdatum bestimmen
+    if list_name == "Today":
+        due_date = date.today().isoformat()
+    elif list_name == "Next Day":
+        due_date = (date.today() + timedelta(days=1)).isoformat()
+    elif list_name == "This Week":
+        today = date.today()
+        week_start = today - timedelta(days=today.weekday())
+        week_end = week_start + timedelta(days=6)
+        due_date = week_end.isoformat()
+    elif list_name == "This Month":
+        today = date.today()
+        next_month = (today.replace(day=1) + timedelta(days=31)).replace(day=1)
+        due_date = next_month.isoformat()
+    else:
+        due_date = None
+
+    # Speziallisten → KEINE Hierarchie
+    if list_name in ["Today", "Next Day", "This Week", "This Month"]:
+        conn = manager.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO special_list_tasks
+            (special_list_name, title, description, due_date, completed, estimated_time, user_id)
+            VALUES (?, ?, ?, ?, 0, ?, ?)
+        """, (list_name, title, description, due_date, estimated_time, current_user.id))
+        conn.commit()
+        conn.close()
+
+    # Normale Listen → MIT parent_id
+    else:
+        manager.add_task(
+            list_name=list_name,
+            title=title,
+            description=description,
+            due_date=due_date,
+            estimated_time=estimated_time,
+            parent_id=parent_id,
+            user_id=current_user.id
+        )
+
     return redirect(url_for("index"))
+
+
 
 
 @app.route("/add_list", methods=["POST"])
@@ -164,12 +209,11 @@ def add_list():
     return redirect(url_for("index"))
 
 
-
 @app.route("/add_task_to_today", methods=["POST"])
 @login_required
 def add_task_to_today():
     """
-    Fügt eine Aufgabe zur "Heute"-Liste hinzu.
+    Fügt eine Aufgabe zur "Today"-Liste in der speziellen Tabelle hinzu.
     """
     # Formulardaten auslesen
     title = request.form.get("title")
@@ -177,59 +221,86 @@ def add_task_to_today():
     estimated_time = request.form.get("estimated_time")  # Wert als String auslesen
     due_date = date.today().isoformat()  # Heute als Datum
 
-    # Überprüfen, ob eine Zeit angegeben wurde, falls nicht, Standardwert setzen
     if estimated_time:
-        estimated_time = int(estimated_time)  # In Integer umwandeln, falls angegeben
+        estimated_time = int(estimated_time)
     else:
-        estimated_time = None  # Kein Wert gesetzt
+        estimated_time = 30  # Default-Wert
 
-    # Aufgabe zur "Heute"-Liste hinzufügen
-    manager.add_task("Today", title, description, due_date, estimated_time)
+    # Neue Methode: Aufgabe in special_list_tasks einfügen
+    conn = manager.get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO special_list_tasks
+        (special_list_name, title, description, due_date, completed, estimated_time, user_id)
+        VALUES (?, ?, ?, ?, 0, ?, ?)
+    """, ("Today", title, description, due_date, estimated_time, current_user.id))
+    conn.commit()
+    conn.close()
 
     return redirect(url_for("index"))
 
-
-
-# Route für die 'Next Day' Liste
 @app.route("/add_task_to_next_day", methods=["POST"])
 @login_required
 def add_task_to_next_day():
     title = request.form.get("title")
     description = request.form.get("description", "")
-    estimated_time = int(request.form.get("estimated_time", 0))
-    due_date = (date.today() + timedelta(days=1)).isoformat()  # Morgen als Datum
+    estimated_time = int(request.form.get("estimated_time", 30))
+    due_date = (date.today() + timedelta(days=1)).isoformat()
 
-    manager.add_task("Next Day", title, description, due_date, estimated_time)
+    conn = manager.get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO special_list_tasks
+        (special_list_name, title, description, due_date, completed, estimated_time, user_id)
+        VALUES (?, ?, ?, ?, 0, ?, ?)
+    """, ("Next Day", title, description, due_date, estimated_time, current_user.id))
+    conn.commit()
+    conn.close()
+
     return redirect(url_for("index"))
-
-# Route für die 'This Week' Liste
 @app.route("/add_task_to_this_week", methods=["POST"])
 @login_required
 def add_task_to_this_week():
     title = request.form.get("title")
     description = request.form.get("description", "")
-    estimated_time = int(request.form.get("estimated_time", 0))
+    estimated_time = int(request.form.get("estimated_time", 30))
     today = date.today()
-    # Berechne den Wochenstart (Montag) und Wochenende (Sonntag)
     week_start = today - timedelta(days=today.weekday())
     week_end = week_start + timedelta(days=6)
-    # Setze das Fälligkeitsdatum auf das Ende der Woche
-    due_date = week_end.isoformat()
+    due_date = week_end.isoformat()  # Ende der Woche als Fälligkeitsdatum
 
-    manager.add_task("This Week", title, description, due_date, estimated_time)
+    conn = manager.get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO special_list_tasks
+        (special_list_name, title, description, due_date, completed, estimated_time, user_id)
+        VALUES (?, ?, ?, ?, 0, ?, ?)
+    """, ("This Week", title, description, due_date, estimated_time, current_user.id))
+    conn.commit()
+    conn.close()
+
     return redirect(url_for("index"))
 
-
-# Route für die 'This Month' Liste
 @app.route("/add_task_to_this_month", methods=["POST"])
 @login_required
 def add_task_to_this_month():
     title = request.form.get("title")
     description = request.form.get("description", "")
-    estimated_time = int(request.form.get("estimated_time", 0))
-    due_date = (date.today().replace(day=1) + timedelta(days=31)).replace(day=1).isoformat()  # Erster Tag des nächsten Monats
+    estimated_time = int(request.form.get("estimated_time", 30))
+    today = date.today()
+    next_month = (today.replace(day=1) + timedelta(days=31)).replace(day=1)
+    due_date = next_month.isoformat()  # Erster Tag nächsten Monats
 
-    manager.add_task("This Month", title, description, due_date, estimated_time)
+    conn = manager.get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO special_list_tasks
+        (special_list_name, title, description, due_date, completed, estimated_time, user_id)
+        VALUES (?, ?, ?, ?, 0, ?, ?)
+    """, ("This Month", title, description, due_date, estimated_time, current_user.id))
+    conn.commit()
+    conn.close()
+
     return redirect(url_for("index"))
 
 @app.route("/archive_list/<list_name>", methods=["POST"])
@@ -292,6 +363,8 @@ def index():
     # Normale Tasks für Today
     today_incomplete = manager.get_tasks_for_date_range(today.isoformat(), today.isoformat(), completed=False)
     today_completed = manager.get_tasks_for_date_range(today.isoformat(), today.isoformat(), completed=True)
+
+
     # Milestones, die heute fällig sind
     today_milestones = timeline_manager.get_milestones_for_date_range(today.isoformat(), today.isoformat())
     today_milestones_converted = []
@@ -415,6 +488,23 @@ def index():
         for list_name in all_lists
     ]
 
+    # Speziallisten Tasks hinzufügen
+    today_special_tasks = manager.get_special_list_tasks("Today")
+    for status in ["incomplete", "completed"]:
+        today_tasks[status].extend(today_special_tasks[status])
+
+    tomorrow_special_tasks = manager.get_special_list_tasks("Next Day")
+    for status in ["incomplete", "completed"]:
+        next_day_tasks[status].extend(tomorrow_special_tasks[status])
+
+    week_special_tasks = manager.get_special_list_tasks("This Week")
+    for status in ["incomplete", "completed"]:
+        week_tasks[status].extend(week_special_tasks[status])
+
+    month_special_tasks = manager.get_special_list_tasks("This Month")
+    for status in ["incomplete", "completed"]:
+        month_tasks[status].extend(month_special_tasks[status])
+
     # Alle Daten an das Template übergeben
     return render_template(
         "index.html",
@@ -469,7 +559,7 @@ def toggle_task(task_id):
     """
     completed = request.json.get("completed", False)
     manager.toggle_task_completion(task_id, completed)  # Update in der Datenbank
-    print(f"Task {task_id} toggled to {'completed' if completed else 'incomplete'}")  # Debugging
+    #print(f"Task {task_id} toggled to {'completed' if completed else 'incomplete'}")  # Debugging
     return "OK", 200
 
 
@@ -565,6 +655,25 @@ def move_task(task_id):
     data = request.json
     new_list = data.get("newList")
     manager.move_task(task_id, new_list)
+    return "OK", 200
+
+
+@app.route("/move_task_to_special_list", methods=["POST"])
+@login_required
+def move_task_to_special_list():
+    data = request.get_json()
+    task_id = data["taskId"]
+    special_list_name = data["specialListName"]
+
+    conn = manager.get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE special_list_tasks
+        SET special_list_name = ?
+        WHERE id = ? AND user_id = ?
+    """, (special_list_name, task_id, current_user.id))
+    conn.commit()
+    conn.close()
     return "OK", 200
 
 
@@ -670,12 +779,18 @@ def rename_task(task_id):
 @app.route("/update_task_order", methods=["POST"])
 @login_required
 def update_task_order():
-    data = request.json
-    new_order = data.get("order", [])
-    print(f"Neue Reihenfolge erhalten: {new_order}")  # Debug
+    data = request.get_json(force=True)
+    order = data.get("order")
+    parent_id = data.get("parentId")
+    new_list_name = data.get("listName")
 
-    # Aktualisiere die Reihenfolge in der Datenbank
-    manager.update_task_order(new_order)
+    if not order:
+        return "No order provided", 400
+
+    tasks = [{"id": int(task_id), "parent_id": int(parent_id) if parent_id else None, "position": idx}
+             for idx, task_id in enumerate(order)]
+
+    manager.update_task_order(tasks, new_list_name=new_list_name)
     return "OK", 200
 
 
